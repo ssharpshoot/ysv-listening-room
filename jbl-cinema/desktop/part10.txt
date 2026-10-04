@@ -1,0 +1,5000 @@
+		if ( cached !== undefined ) {
+
+			scope.manager.itemStart( url );
+
+			setTimeout( function () {
+
+				if ( onLoad ) onLoad( cached );
+
+				scope.manager.itemEnd( url );
+
+			}, 0 );
+
+			return cached;
+
+		}
+
+		const image = createElementNS( 'img' );
+
+		function onImageLoad() {
+
+			removeEventListeners();
+
+			Cache.add( url, this );
+
+			if ( onLoad ) onLoad( this );
+
+			scope.manager.itemEnd( url );
+
+		}
+
+		function onImageError( event ) {
+
+			removeEventListeners();
+
+			if ( onError ) onError( event );
+
+			scope.manager.itemError( url );
+			scope.manager.itemEnd( url );
+
+		}
+
+		function removeEventListeners() {
+
+			image.removeEventListener( 'load', onImageLoad, false );
+			image.removeEventListener( 'error', onImageError, false );
+
+		}
+
+		image.addEventListener( 'load', onImageLoad, false );
+		image.addEventListener( 'error', onImageError, false );
+
+		if ( url.slice( 0, 5 ) !== 'data:' ) {
+
+			if ( this.crossOrigin !== undefined ) image.crossOrigin = this.crossOrigin;
+
+		}
+
+		scope.manager.itemStart( url );
+
+		image.src = url;
+
+		return image;
+
+	}
+
+}
+
+class CubeTextureLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+
+	}
+
+	load( urls, onLoad, onProgress, onError ) {
+
+		const texture = new CubeTexture();
+		texture.colorSpace = SRGBColorSpace;
+
+		const loader = new ImageLoader( this.manager );
+		loader.setCrossOrigin( this.crossOrigin );
+		loader.setPath( this.path );
+
+		let loaded = 0;
+
+		function loadTexture( i ) {
+
+			loader.load( urls[ i ], function ( image ) {
+
+				texture.images[ i ] = image;
+
+				loaded ++;
+
+				if ( loaded === 6 ) {
+
+					texture.needsUpdate = true;
+
+					if ( onLoad ) onLoad( texture );
+
+				}
+
+			}, undefined, onError );
+
+		}
+
+		for ( let i = 0; i < urls.length; ++ i ) {
+
+			loadTexture( i );
+
+		}
+
+		return texture;
+
+	}
+
+}
+
+/**
+ * Abstract Base class to load generic binary textures formats (rgbe, hdr, ...)
+ *
+ * Sub classes have to implement the parse() method which will be used in load().
+ */
+
+class DataTextureLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+
+	}
+
+	load( url, onLoad, onProgress, onError ) {
+
+		const scope = this;
+
+		const texture = new DataTexture();
+
+		const loader = new FileLoader( this.manager );
+		loader.setResponseType( 'arraybuffer' );
+		loader.setRequestHeader( this.requestHeader );
+		loader.setPath( this.path );
+		loader.setWithCredentials( scope.withCredentials );
+		loader.load( url, function ( buffer ) {
+
+			let texData;
+
+			try {
+
+				texData = scope.parse( buffer );
+
+			} catch ( error ) {
+
+				if ( onError !== undefined ) {
+
+					onError( error );
+
+				} else {
+
+					console.error( error );
+					return;
+
+				}
+
+			}
+
+			if ( texData.image !== undefined ) {
+
+				texture.image = texData.image;
+
+			} else if ( texData.data !== undefined ) {
+
+				texture.image.width = texData.width;
+				texture.image.height = texData.height;
+				texture.image.data = texData.data;
+
+			}
+
+			texture.wrapS = texData.wrapS !== undefined ? texData.wrapS : ClampToEdgeWrapping;
+			texture.wrapT = texData.wrapT !== undefined ? texData.wrapT : ClampToEdgeWrapping;
+
+			texture.magFilter = texData.magFilter !== undefined ? texData.magFilter : LinearFilter;
+			texture.minFilter = texData.minFilter !== undefined ? texData.minFilter : LinearFilter;
+
+			texture.anisotropy = texData.anisotropy !== undefined ? texData.anisotropy : 1;
+
+			if ( texData.colorSpace !== undefined ) {
+
+				texture.colorSpace = texData.colorSpace;
+
+			}
+
+			if ( texData.flipY !== undefined ) {
+
+				texture.flipY = texData.flipY;
+
+			}
+
+			if ( texData.format !== undefined ) {
+
+				texture.format = texData.format;
+
+			}
+
+			if ( texData.type !== undefined ) {
+
+				texture.type = texData.type;
+
+			}
+
+			if ( texData.mipmaps !== undefined ) {
+
+				texture.mipmaps = texData.mipmaps;
+				texture.minFilter = LinearMipmapLinearFilter; // presumably...
+
+			}
+
+			if ( texData.mipmapCount === 1 ) {
+
+				texture.minFilter = LinearFilter;
+
+			}
+
+			if ( texData.generateMipmaps !== undefined ) {
+
+				texture.generateMipmaps = texData.generateMipmaps;
+
+			}
+
+			texture.needsUpdate = true;
+
+			if ( onLoad ) onLoad( texture, texData );
+
+		}, onProgress, onError );
+
+
+		return texture;
+
+	}
+
+}
+
+class TextureLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+
+	}
+
+	load( url, onLoad, onProgress, onError ) {
+
+		const texture = new Texture();
+
+		const loader = new ImageLoader( this.manager );
+		loader.setCrossOrigin( this.crossOrigin );
+		loader.setPath( this.path );
+
+		loader.load( url, function ( image ) {
+
+			texture.image = image;
+			texture.needsUpdate = true;
+
+			if ( onLoad !== undefined ) {
+
+				onLoad( texture );
+
+			}
+
+		}, onProgress, onError );
+
+		return texture;
+
+	}
+
+}
+
+class Light extends Object3D {
+
+	constructor( color, intensity = 1 ) {
+
+		super();
+
+		this.isLight = true;
+
+		this.type = 'Light';
+
+		this.color = new Color( color );
+		this.intensity = intensity;
+
+	}
+
+	dispose() {
+
+		// Empty here in base class; some subclasses override.
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.color.copy( source.color );
+		this.intensity = source.intensity;
+
+		return this;
+
+	}
+
+	toJSON( meta ) {
+
+		const data = super.toJSON( meta );
+
+		data.object.color = this.color.getHex();
+		data.object.intensity = this.intensity;
+
+		if ( this.groundColor !== undefined ) data.object.groundColor = this.groundColor.getHex();
+
+		if ( this.distance !== undefined ) data.object.distance = this.distance;
+		if ( this.angle !== undefined ) data.object.angle = this.angle;
+		if ( this.decay !== undefined ) data.object.decay = this.decay;
+		if ( this.penumbra !== undefined ) data.object.penumbra = this.penumbra;
+
+		if ( this.shadow !== undefined ) data.object.shadow = this.shadow.toJSON();
+		if ( this.target !== undefined ) data.object.target = this.target.uuid;
+
+		return data;
+
+	}
+
+}
+
+class HemisphereLight extends Light {
+
+	constructor( skyColor, groundColor, intensity ) {
+
+		super( skyColor, intensity );
+
+		this.isHemisphereLight = true;
+
+		this.type = 'HemisphereLight';
+
+		this.position.copy( Object3D.DEFAULT_UP );
+		this.updateMatrix();
+
+		this.groundColor = new Color( groundColor );
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.groundColor.copy( source.groundColor );
+
+		return this;
+
+	}
+
+}
+
+const _projScreenMatrix$1 = /*@__PURE__*/ new Matrix4();
+const _lightPositionWorld$1 = /*@__PURE__*/ new Vector3();
+const _lookTarget$1 = /*@__PURE__*/ new Vector3();
+
+class LightShadow {
+
+	constructor( camera ) {
+
+		this.camera = camera;
+
+		this.intensity = 1;
+
+		this.bias = 0;
+		this.normalBias = 0;
+		this.radius = 1;
+		this.blurSamples = 8;
+
+		this.mapSize = new Vector2( 512, 512 );
+
+		this.map = null;
+		this.mapPass = null;
+		this.matrix = new Matrix4();
+
+		this.autoUpdate = true;
+		this.needsUpdate = false;
+
+		this._frustum = new Frustum();
+		this._frameExtents = new Vector2( 1, 1 );
+
+		this._viewportCount = 1;
+
+		this._viewports = [
+
+			new Vector4( 0, 0, 1, 1 )
+
+		];
+
+	}
+
+	getViewportCount() {
+
+		return this._viewportCount;
+
+	}
+
+	getFrustum() {
+
+		return this._frustum;
+
+	}
+
+	updateMatrices( light ) {
+
+		const shadowCamera = this.camera;
+		const shadowMatrix = this.matrix;
+
+		_lightPositionWorld$1.setFromMatrixPosition( light.matrixWorld );
+		shadowCamera.position.copy( _lightPositionWorld$1 );
+
+		_lookTarget$1.setFromMatrixPosition( light.target.matrixWorld );
+		shadowCamera.lookAt( _lookTarget$1 );
+		shadowCamera.updateMatrixWorld();
+
+		_projScreenMatrix$1.multiplyMatrices( shadowCamera.projectionMatrix, shadowCamera.matrixWorldInverse );
+		this._frustum.setFromProjectionMatrix( _projScreenMatrix$1 );
+
+		shadowMatrix.set(
+			0.5, 0.0, 0.0, 0.5,
+			0.0, 0.5, 0.0, 0.5,
+			0.0, 0.0, 0.5, 0.5,
+			0.0, 0.0, 0.0, 1.0
+		);
+
+		shadowMatrix.multiply( _projScreenMatrix$1 );
+
+	}
+
+	getViewport( viewportIndex ) {
+
+		return this._viewports[ viewportIndex ];
+
+	}
+
+	getFrameExtents() {
+
+		return this._frameExtents;
+
+	}
+
+	dispose() {
+
+		if ( this.map ) {
+
+			this.map.dispose();
+
+		}
+
+		if ( this.mapPass ) {
+
+			this.mapPass.dispose();
+
+		}
+
+	}
+
+	copy( source ) {
+
+		this.camera = source.camera.clone();
+
+		this.intensity = source.intensity;
+
+		this.bias = source.bias;
+		this.radius = source.radius;
+
+		this.mapSize.copy( source.mapSize );
+
+		return this;
+
+	}
+
+	clone() {
+
+		return new this.constructor().copy( this );
+
+	}
+
+	toJSON() {
+
+		const object = {};
+
+		if ( this.intensity !== 1 ) object.intensity = this.intensity;
+		if ( this.bias !== 0 ) object.bias = this.bias;
+		if ( this.normalBias !== 0 ) object.normalBias = this.normalBias;
+		if ( this.radius !== 1 ) object.radius = this.radius;
+		if ( this.mapSize.x !== 512 || this.mapSize.y !== 512 ) object.mapSize = this.mapSize.toArray();
+
+		object.camera = this.camera.toJSON( false ).object;
+		delete object.camera.matrix;
+
+		return object;
+
+	}
+
+}
+
+class SpotLightShadow extends LightShadow {
+
+	constructor() {
+
+		super( new PerspectiveCamera( 50, 1, 0.5, 500 ) );
+
+		this.isSpotLightShadow = true;
+
+		this.focus = 1;
+
+	}
+
+	updateMatrices( light ) {
+
+		const camera = this.camera;
+
+		const fov = RAD2DEG * 2 * light.angle * this.focus;
+		const aspect = this.mapSize.width / this.mapSize.height;
+		const far = light.distance || camera.far;
+
+		if ( fov !== camera.fov || aspect !== camera.aspect || far !== camera.far ) {
+
+			camera.fov = fov;
+			camera.aspect = aspect;
+			camera.far = far;
+			camera.updateProjectionMatrix();
+
+		}
+
+		super.updateMatrices( light );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.focus = source.focus;
+
+		return this;
+
+	}
+
+}
+
+class SpotLight extends Light {
+
+	constructor( color, intensity, distance = 0, angle = Math.PI / 3, penumbra = 0, decay = 2 ) {
+
+		super( color, intensity );
+
+		this.isSpotLight = true;
+
+		this.type = 'SpotLight';
+
+		this.position.copy( Object3D.DEFAULT_UP );
+		this.updateMatrix();
+
+		this.target = new Object3D();
+
+		this.distance = distance;
+		this.angle = angle;
+		this.penumbra = penumbra;
+		this.decay = decay;
+
+		this.map = null;
+
+		this.shadow = new SpotLightShadow();
+
+	}
+
+	get power() {
+
+		// compute the light's luminous power (in lumens) from its intensity (in candela)
+		// by convention for a spotlight, luminous power (lm) = π * luminous intensity (cd)
+		return this.intensity * Math.PI;
+
+	}
+
+	set power( power ) {
+
+		// set the light's intensity (in candela) from the desired luminous power (in lumens)
+		this.intensity = power / Math.PI;
+
+	}
+
+	dispose() {
+
+		this.shadow.dispose();
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.distance = source.distance;
+		this.angle = source.angle;
+		this.penumbra = source.penumbra;
+		this.decay = source.decay;
+
+		this.target = source.target.clone();
+
+		this.shadow = source.shadow.clone();
+
+		return this;
+
+	}
+
+}
+
+const _projScreenMatrix = /*@__PURE__*/ new Matrix4();
+const _lightPositionWorld = /*@__PURE__*/ new Vector3();
+const _lookTarget = /*@__PURE__*/ new Vector3();
+
+class PointLightShadow extends LightShadow {
+
+	constructor() {
+
+		super( new PerspectiveCamera( 90, 1, 0.5, 500 ) );
+
+		this.isPointLightShadow = true;
+
+		this._frameExtents = new Vector2( 4, 2 );
+
+		this._viewportCount = 6;
+
+		this._viewports = [
+			// These viewports map a cube-map onto a 2D texture with the
+			// following orientation:
+			//
+			//  xzXZ
+			//   y Y
+			//
+			// X - Positive x direction
+			// x - Negative x direction
+			// Y - Positive y direction
+			// y - Negative y direction
+			// Z - Positive z direction
+			// z - Negative z direction
+
+			// positive X
+			new Vector4( 2, 1, 1, 1 ),
+			// negative X
+			new Vector4( 0, 1, 1, 1 ),
+			// positive Z
+			new Vector4( 3, 1, 1, 1 ),
+			// negative Z
+			new Vector4( 1, 1, 1, 1 ),
+			// positive Y
+			new Vector4( 3, 0, 1, 1 ),
+			// negative Y
+			new Vector4( 1, 0, 1, 1 )
+		];
+
+		this._cubeDirections = [
+			new Vector3( 1, 0, 0 ), new Vector3( - 1, 0, 0 ), new Vector3( 0, 0, 1 ),
+			new Vector3( 0, 0, - 1 ), new Vector3( 0, 1, 0 ), new Vector3( 0, - 1, 0 )
+		];
+
+		this._cubeUps = [
+			new Vector3( 0, 1, 0 ), new Vector3( 0, 1, 0 ), new Vector3( 0, 1, 0 ),
+			new Vector3( 0, 1, 0 ), new Vector3( 0, 0, 1 ),	new Vector3( 0, 0, - 1 )
+		];
+
+	}
+
+	updateMatrices( light, viewportIndex = 0 ) {
+
+		const camera = this.camera;
+		const shadowMatrix = this.matrix;
+
+		const far = light.distance || camera.far;
+
+		if ( far !== camera.far ) {
+
+			camera.far = far;
+			camera.updateProjectionMatrix();
+
+		}
+
+		_lightPositionWorld.setFromMatrixPosition( light.matrixWorld );
+		camera.position.copy( _lightPositionWorld );
+
+		_lookTarget.copy( camera.position );
+		_lookTarget.add( this._cubeDirections[ viewportIndex ] );
+		camera.up.copy( this._cubeUps[ viewportIndex ] );
+		camera.lookAt( _lookTarget );
+		camera.updateMatrixWorld();
+
+		shadowMatrix.makeTranslation( - _lightPositionWorld.x, - _lightPositionWorld.y, - _lightPositionWorld.z );
+
+		_projScreenMatrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
+		this._frustum.setFromProjectionMatrix( _projScreenMatrix );
+
+	}
+
+}
+
+class PointLight extends Light {
+
+	constructor( color, intensity, distance = 0, decay = 2 ) {
+
+		super( color, intensity );
+
+		this.isPointLight = true;
+
+		this.type = 'PointLight';
+
+		this.distance = distance;
+		this.decay = decay;
+
+		this.shadow = new PointLightShadow();
+
+	}
+
+	get power() {
+
+		// compute the light's luminous power (in lumens) from its intensity (in candela)
+		// for an isotropic light source, luminous power (lm) = 4 π luminous intensity (cd)
+		return this.intensity * 4 * Math.PI;
+
+	}
+
+	set power( power ) {
+
+		// set the light's intensity (in candela) from the desired luminous power (in lumens)
+		this.intensity = power / ( 4 * Math.PI );
+
+	}
+
+	dispose() {
+
+		this.shadow.dispose();
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.distance = source.distance;
+		this.decay = source.decay;
+
+		this.shadow = source.shadow.clone();
+
+		return this;
+
+	}
+
+}
+
+class DirectionalLightShadow extends LightShadow {
+
+	constructor() {
+
+		super( new OrthographicCamera( - 5, 5, 5, - 5, 0.5, 500 ) );
+
+		this.isDirectionalLightShadow = true;
+
+	}
+
+}
+
+class DirectionalLight extends Light {
+
+	constructor( color, intensity ) {
+
+		super( color, intensity );
+
+		this.isDirectionalLight = true;
+
+		this.type = 'DirectionalLight';
+
+		this.position.copy( Object3D.DEFAULT_UP );
+		this.updateMatrix();
+
+		this.target = new Object3D();
+
+		this.shadow = new DirectionalLightShadow();
+
+	}
+
+	dispose() {
+
+		this.shadow.dispose();
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.target = source.target.clone();
+		this.shadow = source.shadow.clone();
+
+		return this;
+
+	}
+
+}
+
+class AmbientLight extends Light {
+
+	constructor( color, intensity ) {
+
+		super( color, intensity );
+
+		this.isAmbientLight = true;
+
+		this.type = 'AmbientLight';
+
+	}
+
+}
+
+class RectAreaLight extends Light {
+
+	constructor( color, intensity, width = 10, height = 10 ) {
+
+		super( color, intensity );
+
+		this.isRectAreaLight = true;
+
+		this.type = 'RectAreaLight';
+
+		this.width = width;
+		this.height = height;
+
+	}
+
+	get power() {
+
+		// compute the light's luminous power (in lumens) from its intensity (in nits)
+		return this.intensity * this.width * this.height * Math.PI;
+
+	}
+
+	set power( power ) {
+
+		// set the light's intensity (in nits) from the desired luminous power (in lumens)
+		this.intensity = power / ( this.width * this.height * Math.PI );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.width = source.width;
+		this.height = source.height;
+
+		return this;
+
+	}
+
+	toJSON( meta ) {
+
+		const data = super.toJSON( meta );
+
+		data.object.width = this.width;
+		data.object.height = this.height;
+
+		return data;
+
+	}
+
+}
+
+/**
+ * Primary reference:
+ *   https://graphics.stanford.edu/papers/envmap/envmap.pdf
+ *
+ * Secondary reference:
+ *   https://www.ppsloan.org/publications/StupidSH36.pdf
+ */
+
+// 3-band SH defined by 9 coefficients
+
+class SphericalHarmonics3 {
+
+	constructor() {
+
+		this.isSphericalHarmonics3 = true;
+
+		this.coefficients = [];
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			this.coefficients.push( new Vector3() );
+
+		}
+
+	}
+
+	set( coefficients ) {
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			this.coefficients[ i ].copy( coefficients[ i ] );
+
+		}
+
+		return this;
+
+	}
+
+	zero() {
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			this.coefficients[ i ].set( 0, 0, 0 );
+
+		}
+
+		return this;
+
+	}
+
+	// get the radiance in the direction of the normal
+	// target is a Vector3
+	getAt( normal, target ) {
+
+		// normal is assumed to be unit length
+
+		const x = normal.x, y = normal.y, z = normal.z;
+
+		const coeff = this.coefficients;
+
+		// band 0
+		target.copy( coeff[ 0 ] ).multiplyScalar( 0.282095 );
+
+		// band 1
+		target.addScaledVector( coeff[ 1 ], 0.488603 * y );
+		target.addScaledVector( coeff[ 2 ], 0.488603 * z );
+		target.addScaledVector( coeff[ 3 ], 0.488603 * x );
+
+		// band 2
+		target.addScaledVector( coeff[ 4 ], 1.092548 * ( x * y ) );
+		target.addScaledVector( coeff[ 5 ], 1.092548 * ( y * z ) );
+		target.addScaledVector( coeff[ 6 ], 0.315392 * ( 3.0 * z * z - 1.0 ) );
+		target.addScaledVector( coeff[ 7 ], 1.092548 * ( x * z ) );
+		target.addScaledVector( coeff[ 8 ], 0.546274 * ( x * x - y * y ) );
+
+		return target;
+
+	}
+
+	// get the irradiance (radiance convolved with cosine lobe) in the direction of the normal
+	// target is a Vector3
+	// https://graphics.stanford.edu/papers/envmap/envmap.pdf
+	getIrradianceAt( normal, target ) {
+
+		// normal is assumed to be unit length
+
+		const x = normal.x, y = normal.y, z = normal.z;
+
+		const coeff = this.coefficients;
+
+		// band 0
+		target.copy( coeff[ 0 ] ).multiplyScalar( 0.886227 ); // π * 0.282095
+
+		// band 1
+		target.addScaledVector( coeff[ 1 ], 2.0 * 0.511664 * y ); // ( 2 * π / 3 ) * 0.488603
+		target.addScaledVector( coeff[ 2 ], 2.0 * 0.511664 * z );
+		target.addScaledVector( coeff[ 3 ], 2.0 * 0.511664 * x );
+
+		// band 2
+		target.addScaledVector( coeff[ 4 ], 2.0 * 0.429043 * x * y ); // ( π / 4 ) * 1.092548
+		target.addScaledVector( coeff[ 5 ], 2.0 * 0.429043 * y * z );
+		target.addScaledVector( coeff[ 6 ], 0.743125 * z * z - 0.247708 ); // ( π / 4 ) * 0.315392 * 3
+		target.addScaledVector( coeff[ 7 ], 2.0 * 0.429043 * x * z );
+		target.addScaledVector( coeff[ 8 ], 0.429043 * ( x * x - y * y ) ); // ( π / 4 ) * 0.546274
+
+		return target;
+
+	}
+
+	add( sh ) {
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			this.coefficients[ i ].add( sh.coefficients[ i ] );
+
+		}
+
+		return this;
+
+	}
+
+	addScaledSH( sh, s ) {
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			this.coefficients[ i ].addScaledVector( sh.coefficients[ i ], s );
+
+		}
+
+		return this;
+
+	}
+
+	scale( s ) {
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			this.coefficients[ i ].multiplyScalar( s );
+
+		}
+
+		return this;
+
+	}
+
+	lerp( sh, alpha ) {
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			this.coefficients[ i ].lerp( sh.coefficients[ i ], alpha );
+
+		}
+
+		return this;
+
+	}
+
+	equals( sh ) {
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			if ( ! this.coefficients[ i ].equals( sh.coefficients[ i ] ) ) {
+
+				return false;
+
+			}
+
+		}
+
+		return true;
+
+	}
+
+	copy( sh ) {
+
+		return this.set( sh.coefficients );
+
+	}
+
+	clone() {
+
+		return new this.constructor().copy( this );
+
+	}
+
+	fromArray( array, offset = 0 ) {
+
+		const coefficients = this.coefficients;
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			coefficients[ i ].fromArray( array, offset + ( i * 3 ) );
+
+		}
+
+		return this;
+
+	}
+
+	toArray( array = [], offset = 0 ) {
+
+		const coefficients = this.coefficients;
+
+		for ( let i = 0; i < 9; i ++ ) {
+
+			coefficients[ i ].toArray( array, offset + ( i * 3 ) );
+
+		}
+
+		return array;
+
+	}
+
+	// evaluate the basis functions
+	// shBasis is an Array[ 9 ]
+	static getBasisAt( normal, shBasis ) {
+
+		// normal is assumed to be unit length
+
+		const x = normal.x, y = normal.y, z = normal.z;
+
+		// band 0
+		shBasis[ 0 ] = 0.282095;
+
+		// band 1
+		shBasis[ 1 ] = 0.488603 * y;
+		shBasis[ 2 ] = 0.488603 * z;
+		shBasis[ 3 ] = 0.488603 * x;
+
+		// band 2
+		shBasis[ 4 ] = 1.092548 * x * y;
+		shBasis[ 5 ] = 1.092548 * y * z;
+		shBasis[ 6 ] = 0.315392 * ( 3 * z * z - 1 );
+		shBasis[ 7 ] = 1.092548 * x * z;
+		shBasis[ 8 ] = 0.546274 * ( x * x - y * y );
+
+	}
+
+}
+
+class LightProbe extends Light {
+
+	constructor( sh = new SphericalHarmonics3(), intensity = 1 ) {
+
+		super( undefined, intensity );
+
+		this.isLightProbe = true;
+
+		this.sh = sh;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.sh.copy( source.sh );
+
+		return this;
+
+	}
+
+	fromJSON( json ) {
+
+		this.intensity = json.intensity; // TODO: Move this bit to Light.fromJSON();
+		this.sh.fromArray( json.sh );
+
+		return this;
+
+	}
+
+	toJSON( meta ) {
+
+		const data = super.toJSON( meta );
+
+		data.object.sh = this.sh.toArray();
+
+		return data;
+
+	}
+
+}
+
+class MaterialLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+		this.textures = {};
+
+	}
+
+	load( url, onLoad, onProgress, onError ) {
+
+		const scope = this;
+
+		const loader = new FileLoader( scope.manager );
+		loader.setPath( scope.path );
+		loader.setRequestHeader( scope.requestHeader );
+		loader.setWithCredentials( scope.withCredentials );
+		loader.load( url, function ( text ) {
+
+			try {
+
+				onLoad( scope.parse( JSON.parse( text ) ) );
+
+			} catch ( e ) {
+
+				if ( onError ) {
+
+					onError( e );
+
+				} else {
+
+					console.error( e );
+
+				}
+
+				scope.manager.itemError( url );
+
+			}
+
+		}, onProgress, onError );
+
+	}
+
+	parse( json ) {
+
+		const textures = this.textures;
+
+		function getTexture( name ) {
+
+			if ( textures[ name ] === undefined ) {
+
+				console.warn( 'THREE.MaterialLoader: Undefined texture', name );
+
+			}
+
+			return textures[ name ];
+
+		}
+
+		const material = this.createMaterialFromType( json.type );
+
+		if ( json.uuid !== undefined ) material.uuid = json.uuid;
+		if ( json.name !== undefined ) material.name = json.name;
+		if ( json.color !== undefined && material.color !== undefined ) material.color.setHex( json.color );
+		if ( json.roughness !== undefined ) material.roughness = json.roughness;
+		if ( json.metalness !== undefined ) material.metalness = json.metalness;
+		if ( json.sheen !== undefined ) material.sheen = json.sheen;
+		if ( json.sheenColor !== undefined ) material.sheenColor = new Color().setHex( json.sheenColor );
+		if ( json.sheenRoughness !== undefined ) material.sheenRoughness = json.sheenRoughness;
+		if ( json.emissive !== undefined && material.emissive !== undefined ) material.emissive.setHex( json.emissive );
+		if ( json.specular !== undefined && material.specular !== undefined ) material.specular.setHex( json.specular );
+		if ( json.specularIntensity !== undefined ) material.specularIntensity = json.specularIntensity;
+		if ( json.specularColor !== undefined && material.specularColor !== undefined ) material.specularColor.setHex( json.specularColor );
+		if ( json.shininess !== undefined ) material.shininess = json.shininess;
+		if ( json.clearcoat !== undefined ) material.clearcoat = json.clearcoat;
+		if ( json.clearcoatRoughness !== undefined ) material.clearcoatRoughness = json.clearcoatRoughness;
+		if ( json.dispersion !== undefined ) material.dispersion = json.dispersion;
+		if ( json.iridescence !== undefined ) material.iridescence = json.iridescence;
+		if ( json.iridescenceIOR !== undefined ) material.iridescenceIOR = json.iridescenceIOR;
+		if ( json.iridescenceThicknessRange !== undefined ) material.iridescenceThicknessRange = json.iridescenceThicknessRange;
+		if ( json.transmission !== undefined ) material.transmission = json.transmission;
+		if ( json.thickness !== undefined ) material.thickness = json.thickness;
+		if ( json.attenuationDistance !== undefined ) material.attenuationDistance = json.attenuationDistance;
+		if ( json.attenuationColor !== undefined && material.attenuationColor !== undefined ) material.attenuationColor.setHex( json.attenuationColor );
+		if ( json.anisotropy !== undefined ) material.anisotropy = json.anisotropy;
+		if ( json.anisotropyRotation !== undefined ) material.anisotropyRotation = json.anisotropyRotation;
+		if ( json.fog !== undefined ) material.fog = json.fog;
+		if ( json.flatShading !== undefined ) material.flatShading = json.flatShading;
+		if ( json.blending !== undefined ) material.blending = json.blending;
+		if ( json.combine !== undefined ) material.combine = json.combine;
+		if ( json.side !== undefined ) material.side = json.side;
+		if ( json.shadowSide !== undefined ) material.shadowSide = json.shadowSide;
+		if ( json.opacity !== undefined ) material.opacity = json.opacity;
+		if ( json.transparent !== undefined ) material.transparent = json.transparent;
+		if ( json.alphaTest !== undefined ) material.alphaTest = json.alphaTest;
+		if ( json.alphaHash !== undefined ) material.alphaHash = json.alphaHash;
+		if ( json.depthFunc !== undefined ) material.depthFunc = json.depthFunc;
+		if ( json.depthTest !== undefined ) material.depthTest = json.depthTest;
+		if ( json.depthWrite !== undefined ) material.depthWrite = json.depthWrite;
+		if ( json.colorWrite !== undefined ) material.colorWrite = json.colorWrite;
+		if ( json.blendSrc !== undefined ) material.blendSrc = json.blendSrc;
+		if ( json.blendDst !== undefined ) material.blendDst = json.blendDst;
+		if ( json.blendEquation !== undefined ) material.blendEquation = json.blendEquation;
+		if ( json.blendSrcAlpha !== undefined ) material.blendSrcAlpha = json.blendSrcAlpha;
+		if ( json.blendDstAlpha !== undefined ) material.blendDstAlpha = json.blendDstAlpha;
+		if ( json.blendEquationAlpha !== undefined ) material.blendEquationAlpha = json.blendEquationAlpha;
+		if ( json.blendColor !== undefined && material.blendColor !== undefined ) material.blendColor.setHex( json.blendColor );
+		if ( json.blendAlpha !== undefined ) material.blendAlpha = json.blendAlpha;
+		if ( json.stencilWriteMask !== undefined ) material.stencilWriteMask = json.stencilWriteMask;
+		if ( json.stencilFunc !== undefined ) material.stencilFunc = json.stencilFunc;
+		if ( json.stencilRef !== undefined ) material.stencilRef = json.stencilRef;
+		if ( json.stencilFuncMask !== undefined ) material.stencilFuncMask = json.stencilFuncMask;
+		if ( json.stencilFail !== undefined ) material.stencilFail = json.stencilFail;
+		if ( json.stencilZFail !== undefined ) material.stencilZFail = json.stencilZFail;
+		if ( json.stencilZPass !== undefined ) material.stencilZPass = json.stencilZPass;
+		if ( json.stencilWrite !== undefined ) material.stencilWrite = json.stencilWrite;
+
+		if ( json.wireframe !== undefined ) material.wireframe = json.wireframe;
+		if ( json.wireframeLinewidth !== undefined ) material.wireframeLinewidth = json.wireframeLinewidth;
+		if ( json.wireframeLinecap !== undefined ) material.wireframeLinecap = json.wireframeLinecap;
+		if ( json.wireframeLinejoin !== undefined ) material.wireframeLinejoin = json.wireframeLinejoin;
+
+		if ( json.rotation !== undefined ) material.rotation = json.rotation;
+
+		if ( json.linewidth !== undefined ) material.linewidth = json.linewidth;
+		if ( json.dashSize !== undefined ) material.dashSize = json.dashSize;
+		if ( json.gapSize !== undefined ) material.gapSize = json.gapSize;
+		if ( json.scale !== undefined ) material.scale = json.scale;
+
+		if ( json.polygonOffset !== undefined ) material.polygonOffset = json.polygonOffset;
+		if ( json.polygonOffsetFactor !== undefined ) material.polygonOffsetFactor = json.polygonOffsetFactor;
+		if ( json.polygonOffsetUnits !== undefined ) material.polygonOffsetUnits = json.polygonOffsetUnits;
+
+		if ( json.dithering !== undefined ) material.dithering = json.dithering;
+
+		if ( json.alphaToCoverage !== undefined ) material.alphaToCoverage = json.alphaToCoverage;
+		if ( json.premultipliedAlpha !== undefined ) material.premultipliedAlpha = json.premultipliedAlpha;
+		if ( json.forceSinglePass !== undefined ) material.forceSinglePass = json.forceSinglePass;
+
+		if ( json.visible !== undefined ) material.visible = json.visible;
+
+		if ( json.toneMapped !== undefined ) material.toneMapped = json.toneMapped;
+
+		if ( json.userData !== undefined ) material.userData = json.userData;
+
+		if ( json.vertexColors !== undefined ) {
+
+			if ( typeof json.vertexColors === 'number' ) {
+
+				material.vertexColors = ( json.vertexColors > 0 ) ? true : false;
+
+			} else {
+
+				material.vertexColors = json.vertexColors;
+
+			}
+
+		}
+
+		// Shader Material
+
+		if ( json.uniforms !== undefined ) {
+
+			for ( const name in json.uniforms ) {
+
+				const uniform = json.uniforms[ name ];
+
+				material.uniforms[ name ] = {};
+
+				switch ( uniform.type ) {
+
+					case 't':
+						material.uniforms[ name ].value = getTexture( uniform.value );
+						break;
+
+					case 'c':
+						material.uniforms[ name ].value = new Color().setHex( uniform.value );
+						break;
+
+					case 'v2':
+						material.uniforms[ name ].value = new Vector2().fromArray( uniform.value );
+						break;
+
+					case 'v3':
+						material.uniforms[ name ].value = new Vector3().fromArray( uniform.value );
+						break;
+
+					case 'v4':
+						material.uniforms[ name ].value = new Vector4().fromArray( uniform.value );
+						break;
+
+					case 'm3':
+						material.uniforms[ name ].value = new Matrix3().fromArray( uniform.value );
+						break;
+
+					case 'm4':
+						material.uniforms[ name ].value = new Matrix4().fromArray( uniform.value );
+						break;
+
+					default:
+						material.uniforms[ name ].value = uniform.value;
+
+				}
+
+			}
+
+		}
+
+		if ( json.defines !== undefined ) material.defines = json.defines;
+		if ( json.vertexShader !== undefined ) material.vertexShader = json.vertexShader;
+		if ( json.fragmentShader !== undefined ) material.fragmentShader = json.fragmentShader;
+		if ( json.glslVersion !== undefined ) material.glslVersion = json.glslVersion;
+
+		if ( json.extensions !== undefined ) {
+
+			for ( const key in json.extensions ) {
+
+				material.extensions[ key ] = json.extensions[ key ];
+
+			}
+
+		}
+
+		if ( json.lights !== undefined ) material.lights = json.lights;
+		if ( json.clipping !== undefined ) material.clipping = json.clipping;
+
+		// for PointsMaterial
+
+		if ( json.size !== undefined ) material.size = json.size;
+		if ( json.sizeAttenuation !== undefined ) material.sizeAttenuation = json.sizeAttenuation;
+
+		// maps
+
+		if ( json.map !== undefined ) material.map = getTexture( json.map );
+		if ( json.matcap !== undefined ) material.matcap = getTexture( json.matcap );
+
+		if ( json.alphaMap !== undefined ) material.alphaMap = getTexture( json.alphaMap );
+
+		if ( json.bumpMap !== undefined ) material.bumpMap = getTexture( json.bumpMap );
+		if ( json.bumpScale !== undefined ) material.bumpScale = json.bumpScale;
+
+		if ( json.normalMap !== undefined ) material.normalMap = getTexture( json.normalMap );
+		if ( json.normalMapType !== undefined ) material.normalMapType = json.normalMapType;
+		if ( json.normalScale !== undefined ) {
+
+			let normalScale = json.normalScale;
+
+			if ( Array.isArray( normalScale ) === false ) {
+
+				// Blender exporter used to export a scalar. See #7459
+
+				normalScale = [ normalScale, normalScale ];
+
+			}
+
+			material.normalScale = new Vector2().fromArray( normalScale );
+
+		}
+
+		if ( json.displacementMap !== undefined ) material.displacementMap = getTexture( json.displacementMap );
+		if ( json.displacementScale !== undefined ) material.displacementScale = json.displacementScale;
+		if ( json.displacementBias !== undefined ) material.displacementBias = json.displacementBias;
+
+		if ( json.roughnessMap !== undefined ) material.roughnessMap = getTexture( json.roughnessMap );
+		if ( json.metalnessMap !== undefined ) material.metalnessMap = getTexture( json.metalnessMap );
+
+		if ( json.emissiveMap !== undefined ) material.emissiveMap = getTexture( json.emissiveMap );
+		if ( json.emissiveIntensity !== undefined ) material.emissiveIntensity = json.emissiveIntensity;
+
+		if ( json.specularMap !== undefined ) material.specularMap = getTexture( json.specularMap );
+		if ( json.specularIntensityMap !== undefined ) material.specularIntensityMap = getTexture( json.specularIntensityMap );
+		if ( json.specularColorMap !== undefined ) material.specularColorMap = getTexture( json.specularColorMap );
+
+		if ( json.envMap !== undefined ) material.envMap = getTexture( json.envMap );
+		if ( json.envMapRotation !== undefined ) material.envMapRotation.fromArray( json.envMapRotation );
+		if ( json.envMapIntensity !== undefined ) material.envMapIntensity = json.envMapIntensity;
+
+		if ( json.reflectivity !== undefined ) material.reflectivity = json.reflectivity;
+		if ( json.refractionRatio !== undefined ) material.refractionRatio = json.refractionRatio;
+
+		if ( json.lightMap !== undefined ) material.lightMap = getTexture( json.lightMap );
+		if ( json.lightMapIntensity !== undefined ) material.lightMapIntensity = json.lightMapIntensity;
+
+		if ( json.aoMap !== undefined ) material.aoMap = getTexture( json.aoMap );
+		if ( json.aoMapIntensity !== undefined ) material.aoMapIntensity = json.aoMapIntensity;
+
+		if ( json.gradientMap !== undefined ) material.gradientMap = getTexture( json.gradientMap );
+
+		if ( json.clearcoatMap !== undefined ) material.clearcoatMap = getTexture( json.clearcoatMap );
+		if ( json.clearcoatRoughnessMap !== undefined ) material.clearcoatRoughnessMap = getTexture( json.clearcoatRoughnessMap );
+		if ( json.clearcoatNormalMap !== undefined ) material.clearcoatNormalMap = getTexture( json.clearcoatNormalMap );
+		if ( json.clearcoatNormalScale !== undefined ) material.clearcoatNormalScale = new Vector2().fromArray( json.clearcoatNormalScale );
+
+		if ( json.iridescenceMap !== undefined ) material.iridescenceMap = getTexture( json.iridescenceMap );
+		if ( json.iridescenceThicknessMap !== undefined ) material.iridescenceThicknessMap = getTexture( json.iridescenceThicknessMap );
+
+		if ( json.transmissionMap !== undefined ) material.transmissionMap = getTexture( json.transmissionMap );
+		if ( json.thicknessMap !== undefined ) material.thicknessMap = getTexture( json.thicknessMap );
+
+		if ( json.anisotropyMap !== undefined ) material.anisotropyMap = getTexture( json.anisotropyMap );
+
+		if ( json.sheenColorMap !== undefined ) material.sheenColorMap = getTexture( json.sheenColorMap );
+		if ( json.sheenRoughnessMap !== undefined ) material.sheenRoughnessMap = getTexture( json.sheenRoughnessMap );
+
+		return material;
+
+	}
+
+	setTextures( value ) {
+
+		this.textures = value;
+		return this;
+
+	}
+
+	createMaterialFromType( type ) {
+
+		return MaterialLoader.createMaterialFromType( type );
+
+	}
+
+	static createMaterialFromType( type ) {
+
+		const materialLib = {
+			ShadowMaterial,
+			SpriteMaterial,
+			RawShaderMaterial,
+			ShaderMaterial,
+			PointsMaterial,
+			MeshPhysicalMaterial,
+			MeshStandardMaterial,
+			MeshPhongMaterial,
+			MeshToonMaterial,
+			MeshNormalMaterial,
+			MeshLambertMaterial,
+			MeshDepthMaterial,
+			MeshDistanceMaterial,
+			MeshBasicMaterial,
+			MeshMatcapMaterial,
+			LineDashedMaterial,
+			LineBasicMaterial,
+			Material
+		};
+
+		return new materialLib[ type ]();
+
+	}
+
+}
+
+class LoaderUtils {
+
+	static decodeText( array ) { // @deprecated, r165
+
+		console.warn( 'THREE.LoaderUtils: decodeText() has been deprecated with r165 and will be removed with r175. Use TextDecoder instead.' );
+
+		if ( typeof TextDecoder !== 'undefined' ) {
+
+			return new TextDecoder().decode( array );
+
+		}
+
+		// Avoid the String.fromCharCode.apply(null, array) shortcut, which
+		// throws a "maximum call stack size exceeded" error for large arrays.
+
+		let s = '';
+
+		for ( let i = 0, il = array.length; i < il; i ++ ) {
+
+			// Implicitly assumes little-endian.
+			s += String.fromCharCode( array[ i ] );
+
+		}
+
+		try {
+
+			// merges multi-byte utf-8 characters.
+
+			return decodeURIComponent( escape( s ) );
+
+		} catch ( e ) { // see #16358
+
+			return s;
+
+		}
+
+	}
+
+	static extractUrlBase( url ) {
+
+		const index = url.lastIndexOf( '/' );
+
+		if ( index === - 1 ) return './';
+
+		return url.slice( 0, index + 1 );
+
+	}
+
+	static resolveURL( url, path ) {
+
+		// Invalid URL
+		if ( typeof url !== 'string' || url === '' ) return '';
+
+		// Host Relative URL
+		if ( /^https?:\/\//i.test( path ) && /^\//.test( url ) ) {
+
+			path = path.replace( /(^https?:\/\/[^\/]+).*/i, '$1' );
+
+		}
+
+		// Absolute URL http://,https://,//
+		if ( /^(https?:)?\/\//i.test( url ) ) return url;
+
+		// Data URI
+		if ( /^data:.*,.*$/i.test( url ) ) return url;
+
+		// Blob URL
+		if ( /^blob:.*$/i.test( url ) ) return url;
+
+		// Relative URL
+		return path + url;
+
+	}
+
+}
+
+class InstancedBufferGeometry extends BufferGeometry {
+
+	constructor() {
+
+		super();
+
+		this.isInstancedBufferGeometry = true;
+
+		this.type = 'InstancedBufferGeometry';
+		this.instanceCount = Infinity;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.instanceCount = source.instanceCount;
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.instanceCount = this.instanceCount;
+
+		data.isInstancedBufferGeometry = true;
+
+		return data;
+
+	}
+
+}
+
+class BufferGeometryLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+
+	}
+
+	load( url, onLoad, onProgress, onError ) {
+
+		const scope = this;
+
+		const loader = new FileLoader( scope.manager );
+		loader.setPath( scope.path );
+		loader.setRequestHeader( scope.requestHeader );
+		loader.setWithCredentials( scope.withCredentials );
+		loader.load( url, function ( text ) {
+
+			try {
+
+				onLoad( scope.parse( JSON.parse( text ) ) );
+
+			} catch ( e ) {
+
+				if ( onError ) {
+
+					onError( e );
+
+				} else {
+
+					console.error( e );
+
+				}
+
+				scope.manager.itemError( url );
+
+			}
+
+		}, onProgress, onError );
+
+	}
+
+	parse( json ) {
+
+		const interleavedBufferMap = {};
+		const arrayBufferMap = {};
+
+		function getInterleavedBuffer( json, uuid ) {
+
+			if ( interleavedBufferMap[ uuid ] !== undefined ) return interleavedBufferMap[ uuid ];
+
+			const interleavedBuffers = json.interleavedBuffers;
+			const interleavedBuffer = interleavedBuffers[ uuid ];
+
+			const buffer = getArrayBuffer( json, interleavedBuffer.buffer );
+
+			const array = getTypedArray( interleavedBuffer.type, buffer );
+			const ib = new InterleavedBuffer( array, interleavedBuffer.stride );
+			ib.uuid = interleavedBuffer.uuid;
+
+			interleavedBufferMap[ uuid ] = ib;
+
+			return ib;
+
+		}
+
+		function getArrayBuffer( json, uuid ) {
+
+			if ( arrayBufferMap[ uuid ] !== undefined ) return arrayBufferMap[ uuid ];
+
+			const arrayBuffers = json.arrayBuffers;
+			const arrayBuffer = arrayBuffers[ uuid ];
+
+			const ab = new Uint32Array( arrayBuffer ).buffer;
+
+			arrayBufferMap[ uuid ] = ab;
+
+			return ab;
+
+		}
+
+		const geometry = json.isInstancedBufferGeometry ? new InstancedBufferGeometry() : new BufferGeometry();
+
+		const index = json.data.index;
+
+		if ( index !== undefined ) {
+
+			const typedArray = getTypedArray( index.type, index.array );
+			geometry.setIndex( new BufferAttribute( typedArray, 1 ) );
+
+		}
+
+		const attributes = json.data.attributes;
+
+		for ( const key in attributes ) {
+
+			const attribute = attributes[ key ];
+			let bufferAttribute;
+
+			if ( attribute.isInterleavedBufferAttribute ) {
+
+				const interleavedBuffer = getInterleavedBuffer( json.data, attribute.data );
+				bufferAttribute = new InterleavedBufferAttribute( interleavedBuffer, attribute.itemSize, attribute.offset, attribute.normalized );
+
+			} else {
+
+				const typedArray = getTypedArray( attribute.type, attribute.array );
+				const bufferAttributeConstr = attribute.isInstancedBufferAttribute ? InstancedBufferAttribute : BufferAttribute;
+				bufferAttribute = new bufferAttributeConstr( typedArray, attribute.itemSize, attribute.normalized );
+
+			}
+
+			if ( attribute.name !== undefined ) bufferAttribute.name = attribute.name;
+			if ( attribute.usage !== undefined ) bufferAttribute.setUsage( attribute.usage );
+
+			geometry.setAttribute( key, bufferAttribute );
+
+		}
+
+		const morphAttributes = json.data.morphAttributes;
+
+		if ( morphAttributes ) {
+
+			for ( const key in morphAttributes ) {
+
+				const attributeArray = morphAttributes[ key ];
+
+				const array = [];
+
+				for ( let i = 0, il = attributeArray.length; i < il; i ++ ) {
+
+					const attribute = attributeArray[ i ];
+					let bufferAttribute;
+
+					if ( attribute.isInterleavedBufferAttribute ) {
+
+						const interleavedBuffer = getInterleavedBuffer( json.data, attribute.data );
+						bufferAttribute = new InterleavedBufferAttribute( interleavedBuffer, attribute.itemSize, attribute.offset, attribute.normalized );
+
+					} else {
+
+						const typedArray = getTypedArray( attribute.type, attribute.array );
+						bufferAttribute = new BufferAttribute( typedArray, attribute.itemSize, attribute.normalized );
+
+					}
+
+					if ( attribute.name !== undefined ) bufferAttribute.name = attribute.name;
+					array.push( bufferAttribute );
+
+				}
+
+				geometry.morphAttributes[ key ] = array;
+
+			}
+
+		}
+
+		const morphTargetsRelative = json.data.morphTargetsRelative;
+
+		if ( morphTargetsRelative ) {
+
+			geometry.morphTargetsRelative = true;
+
+		}
+
+		const groups = json.data.groups || json.data.drawcalls || json.data.offsets;
+
+		if ( groups !== undefined ) {
+
+			for ( let i = 0, n = groups.length; i !== n; ++ i ) {
+
+				const group = groups[ i ];
+
+				geometry.addGroup( group.start, group.count, group.materialIndex );
+
+			}
+
+		}
+
+		const boundingSphere = json.data.boundingSphere;
+
+		if ( boundingSphere !== undefined ) {
+
+			const center = new Vector3();
+
+			if ( boundingSphere.center !== undefined ) {
+
+				center.fromArray( boundingSphere.center );
+
+			}
+
+			geometry.boundingSphere = new Sphere( center, boundingSphere.radius );
+
+		}
+
+		if ( json.name ) geometry.name = json.name;
+		if ( json.userData ) geometry.userData = json.userData;
+
+		return geometry;
+
+	}
+
+}
+
+class ObjectLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+
+	}
+
+	load( url, onLoad, onProgress, onError ) {
+
+		const scope = this;
+
+		const path = ( this.path === '' ) ? LoaderUtils.extractUrlBase( url ) : this.path;
+		this.resourcePath = this.resourcePath || path;
+
+		const loader = new FileLoader( this.manager );
+		loader.setPath( this.path );
+		loader.setRequestHeader( this.requestHeader );
+		loader.setWithCredentials( this.withCredentials );
+		loader.load( url, function ( text ) {
+
+			let json = null;
+
+			try {
+
+				json = JSON.parse( text );
+
+			} catch ( error ) {
+
+				if ( onError !== undefined ) onError( error );
+
+				console.error( 'THREE:ObjectLoader: Can\'t parse ' + url + '.', error.message );
+
+				return;
+
+			}
+
+			const metadata = json.metadata;
+
+			if ( metadata === undefined || metadata.type === undefined || metadata.type.toLowerCase() === 'geometry' ) {
+
+				if ( onError !== undefined ) onError( new Error( 'THREE.ObjectLoader: Can\'t load ' + url ) );
+
+				console.error( 'THREE.ObjectLoader: Can\'t load ' + url );
+				return;
+
+			}
+
+			scope.parse( json, onLoad );
+
+		}, onProgress, onError );
+
+	}
+
+	async loadAsync( url, onProgress ) {
+
+		const scope = this;
+
+		const path = ( this.path === '' ) ? LoaderUtils.extractUrlBase( url ) : this.path;
+		this.resourcePath = this.resourcePath || path;
+
+		const loader = new FileLoader( this.manager );
+		loader.setPath( this.path );
+		loader.setRequestHeader( this.requestHeader );
+		loader.setWithCredentials( this.withCredentials );
+
+		const text = await loader.loadAsync( url, onProgress );
+
+		const json = JSON.parse( text );
+
+		const metadata = json.metadata;
+
+		if ( metadata === undefined || metadata.type === undefined || metadata.type.toLowerCase() === 'geometry' ) {
+
+			throw new Error( 'THREE.ObjectLoader: Can\'t load ' + url );
+
+		}
+
+		return await scope.parseAsync( json );
+
+	}
+
+	parse( json, onLoad ) {
+
+		const animations = this.parseAnimations( json.animations );
+		const shapes = this.parseShapes( json.shapes );
+		const geometries = this.parseGeometries( json.geometries, shapes );
+
+		const images = this.parseImages( json.images, function () {
+
+			if ( onLoad !== undefined ) onLoad( object );
+
+		} );
+
+		const textures = this.parseTextures( json.textures, images );
+		const materials = this.parseMaterials( json.materials, textures );
+
+		const object = this.parseObject( json.object, geometries, materials, textures, animations );
+		const skeletons = this.parseSkeletons( json.skeletons, object );
+
+		this.bindSkeletons( object, skeletons );
+		this.bindLightTargets( object );
+
+		//
+
+		if ( onLoad !== undefined ) {
+
+			let hasImages = false;
+
+			for ( const uuid in images ) {
+
+				if ( images[ uuid ].data instanceof HTMLImageElement ) {
+
+					hasImages = true;
+					break;
+
+				}
+
+			}
+
+			if ( hasImages === false ) onLoad( object );
+
+		}
+
+		return object;
+
+	}
+
+	async parseAsync( json ) {
+
+		const animations = this.parseAnimations( json.animations );
+		const shapes = this.parseShapes( json.shapes );
+		const geometries = this.parseGeometries( json.geometries, shapes );
+
+		const images = await this.parseImagesAsync( json.images );
+
+		const textures = this.parseTextures( json.textures, images );
+		const materials = this.parseMaterials( json.materials, textures );
+
+		const object = this.parseObject( json.object, geometries, materials, textures, animations );
+		const skeletons = this.parseSkeletons( json.skeletons, object );
+
+		this.bindSkeletons( object, skeletons );
+		this.bindLightTargets( object );
+
+		return object;
+
+	}
+
+	parseShapes( json ) {
+
+		const shapes = {};
+
+		if ( json !== undefined ) {
+
+			for ( let i = 0, l = json.length; i < l; i ++ ) {
+
+				const shape = new Shape().fromJSON( json[ i ] );
+
+				shapes[ shape.uuid ] = shape;
+
+			}
+
+		}
+
+		return shapes;
+
+	}
+
+	parseSkeletons( json, object ) {
+
+		const skeletons = {};
+		const bones = {};
+
+		// generate bone lookup table
+
+		object.traverse( function ( child ) {
+
+			if ( child.isBone ) bones[ child.uuid ] = child;
+
+		} );
+
+		// create skeletons
+
+		if ( json !== undefined ) {
+
+			for ( let i = 0, l = json.length; i < l; i ++ ) {
+
+				const skeleton = new Skeleton().fromJSON( json[ i ], bones );
+
+				skeletons[ skeleton.uuid ] = skeleton;
+
+			}
+
+		}
+
+		return skeletons;
+
+	}
+
+	parseGeometries( json, shapes ) {
+
+		const geometries = {};
+
+		if ( json !== undefined ) {
+
+			const bufferGeometryLoader = new BufferGeometryLoader();
+
+			for ( let i = 0, l = json.length; i < l; i ++ ) {
+
+				let geometry;
+				const data = json[ i ];
+
+				switch ( data.type ) {
+
+					case 'BufferGeometry':
+					case 'InstancedBufferGeometry':
+
+						geometry = bufferGeometryLoader.parse( data );
+						break;
+
+					default:
+
+						if ( data.type in Geometries ) {
+
+							geometry = Geometries[ data.type ].fromJSON( data, shapes );
+
+						} else {
+
+							console.warn( `THREE.ObjectLoader: Unsupported geometry type "${ data.type }"` );
+
+						}
+
+				}
+
+				geometry.uuid = data.uuid;
+
+				if ( data.name !== undefined ) geometry.name = data.name;
+				if ( data.userData !== undefined ) geometry.userData = data.userData;
+
+				geometries[ data.uuid ] = geometry;
+
+			}
+
+		}
+
+		return geometries;
+
+	}
+
+	parseMaterials( json, textures ) {
+
+		const cache = {}; // MultiMaterial
+		const materials = {};
+
+		if ( json !== undefined ) {
+
+			const loader = new MaterialLoader();
+			loader.setTextures( textures );
+
+			for ( let i = 0, l = json.length; i < l; i ++ ) {
+
+				const data = json[ i ];
+
+				if ( cache[ data.uuid ] === undefined ) {
+
+					cache[ data.uuid ] = loader.parse( data );
+
+				}
+
+				materials[ data.uuid ] = cache[ data.uuid ];
+
+			}
+
+		}
+
+		return materials;
+
+	}
+
+	parseAnimations( json ) {
+
+		const animations = {};
+
+		if ( json !== undefined ) {
+
+			for ( let i = 0; i < json.length; i ++ ) {
+
+				const data = json[ i ];
+
+				const clip = AnimationClip.parse( data );
+
+				animations[ clip.uuid ] = clip;
+
+			}
+
+		}
+
+		return animations;
+
+	}
+
+	parseImages( json, onLoad ) {
+
+		const scope = this;
+		const images = {};
+
+		let loader;
+
+		function loadImage( url ) {
+
+			scope.manager.itemStart( url );
+
+			return loader.load( url, function () {
+
+				scope.manager.itemEnd( url );
+
+			}, undefined, function () {
+
+				scope.manager.itemError( url );
+				scope.manager.itemEnd( url );
+
+			} );
+
+		}
+
+		function deserializeImage( image ) {
+
+			if ( typeof image === 'string' ) {
+
+				const url = image;
+
+				const path = /^(\/\/)|([a-z]+:(\/\/)?)/i.test( url ) ? url : scope.resourcePath + url;
+
+				return loadImage( path );
+
+			} else {
+
+				if ( image.data ) {
+
+					return {
+						data: getTypedArray( image.type, image.data ),
+						width: image.width,
+						height: image.height
+					};
+
+				} else {
+
+					return null;
+
+				}
+
+			}
+
+		}
+
+		if ( json !== undefined && json.length > 0 ) {
+
+			const manager = new LoadingManager( onLoad );
+
+			loader = new ImageLoader( manager );
+			loader.setCrossOrigin( this.crossOrigin );
+
+			for ( let i = 0, il = json.length; i < il; i ++ ) {
+
+				const image = json[ i ];
+				const url = image.url;
+
+				if ( Array.isArray( url ) ) {
+
+					// load array of images e.g CubeTexture
+
+					const imageArray = [];
+
+					for ( let j = 0, jl = url.length; j < jl; j ++ ) {
+
+						const currentUrl = url[ j ];
+
+						const deserializedImage = deserializeImage( currentUrl );
+
+						if ( deserializedImage !== null ) {
+
+							if ( deserializedImage instanceof HTMLImageElement ) {
+
+								imageArray.push( deserializedImage );
+
+							} else {
+
+								// special case: handle array of data textures for cube textures
+
+								imageArray.push( new DataTexture( deserializedImage.data, deserializedImage.width, deserializedImage.height ) );
+
+							}
+
+						}
+
+					}
+
+					images[ image.uuid ] = new Source( imageArray );
+
+				} else {
+
+					// load single image
+
+					const deserializedImage = deserializeImage( image.url );
+					images[ image.uuid ] = new Source( deserializedImage );
+
+
+				}
+
+			}
+
+		}
+
+		return images;
+
+	}
+
+	async parseImagesAsync( json ) {
+
+		const scope = this;
+		const images = {};
+
+		let loader;
+
+		async function deserializeImage( image ) {
+
+			if ( typeof image === 'string' ) {
+
+				const url = image;
+
+				const path = /^(\/\/)|([a-z]+:(\/\/)?)/i.test( url ) ? url : scope.resourcePath + url;
+
+				return await loader.loadAsync( path );
+
+			} else {
+
+				if ( image.data ) {
+
+					return {
+						data: getTypedArray( image.type, image.data ),
+						width: image.width,
+						height: image.height
+					};
+
+				} else {
+
+					return null;
+
+				}
+
+			}
+
+		}
+
+		if ( json !== undefined && json.length > 0 ) {
+
+			loader = new ImageLoader( this.manager );
+			loader.setCrossOrigin( this.crossOrigin );
+
+			for ( let i = 0, il = json.length; i < il; i ++ ) {
+
+				const image = json[ i ];
+				const url = image.url;
+
+				if ( Array.isArray( url ) ) {
+
+					// load array of images e.g CubeTexture
+
+					const imageArray = [];
+
+					for ( let j = 0, jl = url.length; j < jl; j ++ ) {
+
+						const currentUrl = url[ j ];
+
+						const deserializedImage = await deserializeImage( currentUrl );
+
+						if ( deserializedImage !== null ) {
+
+							if ( deserializedImage instanceof HTMLImageElement ) {
+
+								imageArray.push( deserializedImage );
+
+							} else {
+
+								// special case: handle array of data textures for cube textures
+
+								imageArray.push( new DataTexture( deserializedImage.data, deserializedImage.width, deserializedImage.height ) );
+
+							}
+
+						}
+
+					}
+
+					images[ image.uuid ] = new Source( imageArray );
+
+				} else {
+
+					// load single image
+
+					const deserializedImage = await deserializeImage( image.url );
+					images[ image.uuid ] = new Source( deserializedImage );
+
+				}
+
+			}
+
+		}
+
+		return images;
+
+	}
+
+	parseTextures( json, images ) {
+
+		function parseConstant( value, type ) {
+
+			if ( typeof value === 'number' ) return value;
+
+			console.warn( 'THREE.ObjectLoader.parseTexture: Constant should be in numeric form.', value );
+
+			return type[ value ];
+
+		}
+
+		const textures = {};
+
+		if ( json !== undefined ) {
+
+			for ( let i = 0, l = json.length; i < l; i ++ ) {
+
+				const data = json[ i ];
+
+				if ( data.image === undefined ) {
+
+					console.warn( 'THREE.ObjectLoader: No "image" specified for', data.uuid );
+
+				}
+
+				if ( images[ data.image ] === undefined ) {
+
+					console.warn( 'THREE.ObjectLoader: Undefined image', data.image );
+
+				}
+
+				const source = images[ data.image ];
+				const image = source.data;
+
+				let texture;
+
+				if ( Array.isArray( image ) ) {
+
+					texture = new CubeTexture();
+
+					if ( image.length === 6 ) texture.needsUpdate = true;
+
+				} else {
+
+					if ( image && image.data ) {
+
+						texture = new DataTexture();
+
+					} else {
+
+						texture = new Texture();
+
+					}
+
+					if ( image ) texture.needsUpdate = true; // textures can have undefined image data
+
+				}
+
+				texture.source = source;
+
+				texture.uuid = data.uuid;
+
+				if ( data.name !== undefined ) texture.name = data.name;
+
+				if ( data.mapping !== undefined ) texture.mapping = parseConstant( data.mapping, TEXTURE_MAPPING );
+				if ( data.channel !== undefined ) texture.channel = data.channel;
+
+				if ( data.offset !== undefined ) texture.offset.fromArray( data.offset );
+				if ( data.repeat !== undefined ) texture.repeat.fromArray( data.repeat );
+				if ( data.center !== undefined ) texture.center.fromArray( data.center );
+				if ( data.rotation !== undefined ) texture.rotation = data.rotation;
+
+				if ( data.wrap !== undefined ) {
+
+					texture.wrapS = parseConstant( data.wrap[ 0 ], TEXTURE_WRAPPING );
+					texture.wrapT = parseConstant( data.wrap[ 1 ], TEXTURE_WRAPPING );
+
+				}
+
+				if ( data.format !== undefined ) texture.format = data.format;
+				if ( data.internalFormat !== undefined ) texture.internalFormat = data.internalFormat;
+				if ( data.type !== undefined ) texture.type = data.type;
+				if ( data.colorSpace !== undefined ) texture.colorSpace = data.colorSpace;
+
+				if ( data.minFilter !== undefined ) texture.minFilter = parseConstant( data.minFilter, TEXTURE_FILTER );
+				if ( data.magFilter !== undefined ) texture.magFilter = parseConstant( data.magFilter, TEXTURE_FILTER );
+				if ( data.anisotropy !== undefined ) texture.anisotropy = data.anisotropy;
+
+				if ( data.flipY !== undefined ) texture.flipY = data.flipY;
+
+				if ( data.generateMipmaps !== undefined ) texture.generateMipmaps = data.generateMipmaps;
+				if ( data.premultiplyAlpha !== undefined ) texture.premultiplyAlpha = data.premultiplyAlpha;
+				if ( data.unpackAlignment !== undefined ) texture.unpackAlignment = data.unpackAlignment;
+				if ( data.compareFunction !== undefined ) texture.compareFunction = data.compareFunction;
+
+				if ( data.userData !== undefined ) texture.userData = data.userData;
+
+				textures[ data.uuid ] = texture;
+
+			}
+
+		}
+
+		return textures;
+
+	}
+
+	parseObject( data, geometries, materials, textures, animations ) {
+
+		let object;
+
+		function getGeometry( name ) {
+
+			if ( geometries[ name ] === undefined ) {
+
+				console.warn( 'THREE.ObjectLoader: Undefined geometry', name );
+
+			}
+
+			return geometries[ name ];
+
+		}
+
+		function getMaterial( name ) {
+
+			if ( name === undefined ) return undefined;
+
+			if ( Array.isArray( name ) ) {
+
+				const array = [];
+
+				for ( let i = 0, l = name.length; i < l; i ++ ) {
+
+					const uuid = name[ i ];
+
+					if ( materials[ uuid ] === undefined ) {
+
+						console.warn( 'THREE.ObjectLoader: Undefined material', uuid );
+
+					}
+
+					array.push( materials[ uuid ] );
+
+				}
+
+				return array;
+
+			}
+
+			if ( materials[ name ] === undefined ) {
+
+				console.warn( 'THREE.ObjectLoader: Undefined material', name );
+
+			}
+
+			return materials[ name ];
+
+		}
+
+		function getTexture( uuid ) {
+
+			if ( textures[ uuid ] === undefined ) {
+
+				console.warn( 'THREE.ObjectLoader: Undefined texture', uuid );
+
+			}
+
+			return textures[ uuid ];
+
+		}
+
+		let geometry, material;
+
+		switch ( data.type ) {
+
+			case 'Scene':
+
+				object = new Scene();
+
+				if ( data.background !== undefined ) {
+
+					if ( Number.isInteger( data.background ) ) {
+
+						object.background = new Color( data.background );
+
+					} else {
+
+						object.background = getTexture( data.background );
+
+					}
+
+				}
+
+				if ( data.environment !== undefined ) {
+
+					object.environment = getTexture( data.environment );
+
+				}
+
+				if ( data.fog !== undefined ) {
+
+					if ( data.fog.type === 'Fog' ) {
+
+						object.fog = new Fog( data.fog.color, data.fog.near, data.fog.far );
+
+					} else if ( data.fog.type === 'FogExp2' ) {
+
+						object.fog = new FogExp2( data.fog.color, data.fog.density );
+
+					}
+
+					if ( data.fog.name !== '' ) {
+
+						object.fog.name = data.fog.name;
+
+					}
+
+				}
+
+				if ( data.backgroundBlurriness !== undefined ) object.backgroundBlurriness = data.backgroundBlurriness;
+				if ( data.backgroundIntensity !== undefined ) object.backgroundIntensity = data.backgroundIntensity;
+				if ( data.backgroundRotation !== undefined ) object.backgroundRotation.fromArray( data.backgroundRotation );
+
+				if ( data.environmentIntensity !== undefined ) object.environmentIntensity = data.environmentIntensity;
+				if ( data.environmentRotation !== undefined ) object.environmentRotation.fromArray( data.environmentRotation );
+
+				break;
+
+			case 'PerspectiveCamera':
+
+				object = new PerspectiveCamera( data.fov, data.aspect, data.near, data.far );
+
+				if ( data.focus !== undefined ) object.focus = data.focus;
+				if ( data.zoom !== undefined ) object.zoom = data.zoom;
+				if ( data.filmGauge !== undefined ) object.filmGauge = data.filmGauge;
+				if ( data.filmOffset !== undefined ) object.filmOffset = data.filmOffset;
+				if ( data.view !== undefined ) object.view = Object.assign( {}, data.view );
+
+				break;
+
+			case 'OrthographicCamera':
+
+				object = new OrthographicCamera( data.left, data.right, data.top, data.bottom, data.near, data.far );
+
+				if ( data.zoom !== undefined ) object.zoom = data.zoom;
+				if ( data.view !== undefined ) object.view = Object.assign( {}, data.view );
+
+				break;
+
+			case 'AmbientLight':
+
+				object = new AmbientLight( data.color, data.intensity );
+
+				break;
+
+			case 'DirectionalLight':
+
+				object = new DirectionalLight( data.color, data.intensity );
+				object.target = data.target || '';
+
+				break;
+
+			case 'PointLight':
+
+				object = new PointLight( data.color, data.intensity, data.distance, data.decay );
+
+				break;
+
+			case 'RectAreaLight':
+
+				object = new RectAreaLight( data.color, data.intensity, data.width, data.height );
+
+				break;
+
+			case 'SpotLight':
+
+				object = new SpotLight( data.color, data.intensity, data.distance, data.angle, data.penumbra, data.decay );
+				object.target = data.target || '';
+
+				break;
+
+			case 'HemisphereLight':
+
+				object = new HemisphereLight( data.color, data.groundColor, data.intensity );
+
+				break;
+
+			case 'LightProbe':
+
+				object = new LightProbe().fromJSON( data );
+
+				break;
+
+			case 'SkinnedMesh':
+
+				geometry = getGeometry( data.geometry );
+			 	material = getMaterial( data.material );
+
+				object = new SkinnedMesh( geometry, material );
+
+				if ( data.bindMode !== undefined ) object.bindMode = data.bindMode;
+				if ( data.bindMatrix !== undefined ) object.bindMatrix.fromArray( data.bindMatrix );
+				if ( data.skeleton !== undefined ) object.skeleton = data.skeleton;
+
+				break;
+
+			case 'Mesh':
+
+				geometry = getGeometry( data.geometry );
+				material = getMaterial( data.material );
+
+				object = new Mesh( geometry, material );
+
+				break;
+
+			case 'InstancedMesh':
+
+				geometry = getGeometry( data.geometry );
+				material = getMaterial( data.material );
+				const count = data.count;
+				const instanceMatrix = data.instanceMatrix;
+				const instanceColor = data.instanceColor;
+
+				object = new InstancedMesh( geometry, material, count );
+				object.instanceMatrix = new InstancedBufferAttribute( new Float32Array( instanceMatrix.array ), 16 );
+				if ( instanceColor !== undefined ) object.instanceColor = new InstancedBufferAttribute( new Float32Array( instanceColor.array ), instanceColor.itemSize );
+
+				break;
+
+			case 'BatchedMesh':
+
+				geometry = getGeometry( data.geometry );
+				material = getMaterial( data.material );
+
+				object = new BatchedMesh( data.maxInstanceCount, data.maxVertexCount, data.maxIndexCount, material );
+				object.geometry = geometry;
+				object.perObjectFrustumCulled = data.perObjectFrustumCulled;
+				object.sortObjects = data.sortObjects;
+
+				object._drawRanges = data.drawRanges;
+				object._reservedRanges = data.reservedRanges;
+
+				object._visibility = data.visibility;
+				object._active = data.active;
+				object._bounds = data.bounds.map( bound => {
+
+					const box = new Box3();
+					box.min.fromArray( bound.boxMin );
+					box.max.fromArray( bound.boxMax );
+
+					const sphere = new Sphere();
+					sphere.radius = bound.sphereRadius;
+					sphere.center.fromArray( bound.sphereCenter );
+
+					return {
+						boxInitialized: bound.boxInitialized,
+						box: box,
+
+						sphereInitialized: bound.sphereInitialized,
+						sphere: sphere
+					};
+
+				} );
+
+				object._maxInstanceCount = data.maxInstanceCount;
+				object._maxVertexCount = data.maxVertexCount;
+				object._maxIndexCount = data.maxIndexCount;
+
+				object._geometryInitialized = data.geometryInitialized;
+				object._geometryCount = data.geometryCount;
+
+				object._matricesTexture = getTexture( data.matricesTexture.uuid );
+				if ( data.colorsTexture !== undefined ) object._colorsTexture = getTexture( data.colorsTexture.uuid );
+
+				break;
+
+			case 'LOD':
+
+				object = new LOD();
+
+				break;
+
+			case 'Line':
+
+				object = new Line( getGeometry( data.geometry ), getMaterial( data.material ) );
+
+				break;
+
+			case 'LineLoop':
+
+				object = new LineLoop( getGeometry( data.geometry ), getMaterial( data.material ) );
+
+				break;
+
+			case 'LineSegments':
+
+				object = new LineSegments( getGeometry( data.geometry ), getMaterial( data.material ) );
+
+				break;
+
+			case 'PointCloud':
+			case 'Points':
+
+				object = new Points( getGeometry( data.geometry ), getMaterial( data.material ) );
+
+				break;
+
+			case 'Sprite':
+
+				object = new Sprite( getMaterial( data.material ) );
+
+				break;
+
+			case 'Group':
+
+				object = new Group();
+
+				break;
+
+			case 'Bone':
+
+				object = new Bone();
+
+				break;
+
+			default:
+
+				object = new Object3D();
+
+		}
+
+		object.uuid = data.uuid;
+
+		if ( data.name !== undefined ) object.name = data.name;
+
+		if ( data.matrix !== undefined ) {
+
+			object.matrix.fromArray( data.matrix );
+
+			if ( data.matrixAutoUpdate !== undefined ) object.matrixAutoUpdate = data.matrixAutoUpdate;
+			if ( object.matrixAutoUpdate ) object.matrix.decompose( object.position, object.quaternion, object.scale );
+
+		} else {
+
+			if ( data.position !== undefined ) object.position.fromArray( data.position );
+			if ( data.rotation !== undefined ) object.rotation.fromArray( data.rotation );
+			if ( data.quaternion !== undefined ) object.quaternion.fromArray( data.quaternion );
+			if ( data.scale !== undefined ) object.scale.fromArray( data.scale );
+
+		}
+
+		if ( data.up !== undefined ) object.up.fromArray( data.up );
+
+		if ( data.castShadow !== undefined ) object.castShadow = data.castShadow;
+		if ( data.receiveShadow !== undefined ) object.receiveShadow = data.receiveShadow;
+
+		if ( data.shadow ) {
+
+			if ( data.shadow.intensity !== undefined ) object.shadow.intensity = data.shadow.intensity;
+			if ( data.shadow.bias !== undefined ) object.shadow.bias = data.shadow.bias;
+			if ( data.shadow.normalBias !== undefined ) object.shadow.normalBias = data.shadow.normalBias;
+			if ( data.shadow.radius !== undefined ) object.shadow.radius = data.shadow.radius;
+			if ( data.shadow.mapSize !== undefined ) object.shadow.mapSize.fromArray( data.shadow.mapSize );
+			if ( data.shadow.camera !== undefined ) object.shadow.camera = this.parseObject( data.shadow.camera );
+
+		}
+
+		if ( data.visible !== undefined ) object.visible = data.visible;
+		if ( data.frustumCulled !== undefined ) object.frustumCulled = data.frustumCulled;
+		if ( data.renderOrder !== undefined ) object.renderOrder = data.renderOrder;
+		if ( data.userData !== undefined ) object.userData = data.userData;
+		if ( data.layers !== undefined ) object.layers.mask = data.layers;
+
+		if ( data.children !== undefined ) {
+
+			const children = data.children;
+
+			for ( let i = 0; i < children.length; i ++ ) {
+
+				object.add( this.parseObject( children[ i ], geometries, materials, textures, animations ) );
+
+			}
+
+		}
+
+		if ( data.animations !== undefined ) {
+
+			const objectAnimations = data.animations;
+
+			for ( let i = 0; i < objectAnimations.length; i ++ ) {
+
+				const uuid = objectAnimations[ i ];
+
+				object.animations.push( animations[ uuid ] );
+
+			}
+
+		}
+
+		if ( data.type === 'LOD' ) {
+
+			if ( data.autoUpdate !== undefined ) object.autoUpdate = data.autoUpdate;
+
+			const levels = data.levels;
+
+			for ( let l = 0; l < levels.length; l ++ ) {
+
+				const level = levels[ l ];
+				const child = object.getObjectByProperty( 'uuid', level.object );
+
+				if ( child !== undefined ) {
+
+					object.addLevel( child, level.distance, level.hysteresis );
+
+				}
+
+			}
+
+		}
+
+		return object;
+
+	}
+
+	bindSkeletons( object, skeletons ) {
+
+		if ( Object.keys( skeletons ).length === 0 ) return;
+
+		object.traverse( function ( child ) {
+
+			if ( child.isSkinnedMesh === true && child.skeleton !== undefined ) {
+
+				const skeleton = skeletons[ child.skeleton ];
+
+				if ( skeleton === undefined ) {
+
+					console.warn( 'THREE.ObjectLoader: No skeleton found with UUID:', child.skeleton );
+
+				} else {
+
+					child.bind( skeleton, child.bindMatrix );
+
+				}
+
+			}
+
+		} );
+
+	}
+
+	bindLightTargets( object ) {
+
+		object.traverse( function ( child ) {
+
+			if ( child.isDirectionalLight || child.isSpotLight ) {
+
+				const uuid = child.target;
+
+				const target = object.getObjectByProperty( 'uuid', uuid );
+
+				if ( target !== undefined ) {
+
+					child.target = target;
+
+				} else {
+
+					child.target = new Object3D();
+
+				}
+
+			}
+
+		} );
+
+	}
+
+}
+
+const TEXTURE_MAPPING = {
+	UVMapping: UVMapping,
+	CubeReflectionMapping: CubeReflectionMapping,
+	CubeRefractionMapping: CubeRefractionMapping,
+	EquirectangularReflectionMapping: EquirectangularReflectionMapping,
+	EquirectangularRefractionMapping: EquirectangularRefractionMapping,
+	CubeUVReflectionMapping: CubeUVReflectionMapping
+};
+
+const TEXTURE_WRAPPING = {
+	RepeatWrapping: RepeatWrapping,
+	ClampToEdgeWrapping: ClampToEdgeWrapping,
+	MirroredRepeatWrapping: MirroredRepeatWrapping
+};
+
+const TEXTURE_FILTER = {
+	NearestFilter: NearestFilter,
+	NearestMipmapNearestFilter: NearestMipmapNearestFilter,
+	NearestMipmapLinearFilter: NearestMipmapLinearFilter,
+	LinearFilter: LinearFilter,
+	LinearMipmapNearestFilter: LinearMipmapNearestFilter,
+	LinearMipmapLinearFilter: LinearMipmapLinearFilter
+};
+
+class ImageBitmapLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+
+		this.isImageBitmapLoader = true;
+
+		if ( typeof createImageBitmap === 'undefined' ) {
+
+			console.warn( 'THREE.ImageBitmapLoader: createImageBitmap() not supported.' );
+
+		}
+
+		if ( typeof fetch === 'undefined' ) {
+
+			console.warn( 'THREE.ImageBitmapLoader: fetch() not supported.' );
+
+		}
+
+		this.options = { premultiplyAlpha: 'none' };
+
+	}
+
+	setOptions( options ) {
+
+		this.options = options;
+
+		return this;
+
+	}
+
+	load( url, onLoad, onProgress, onError ) {
+
+		if ( url === undefined ) url = '';
+
+		if ( this.path !== undefined ) url = this.path + url;
+
+		url = this.manager.resolveURL( url );
+
+		const scope = this;
+
+		const cached = Cache.get( url );
+
+		if ( cached !== undefined ) {
+
+			scope.manager.itemStart( url );
+
+			// If cached is a promise, wait for it to resolve
+			if ( cached.then ) {
+
+				cached.then( imageBitmap => {
+
+					if ( onLoad ) onLoad( imageBitmap );
+
+					scope.manager.itemEnd( url );
+
+				} ).catch( e => {
+
+					if ( onError ) onError( e );
+
+				} );
+				return;
+
+			}
+
+			// If cached is not a promise (i.e., it's already an imageBitmap)
+			setTimeout( function () {
+
+				if ( onLoad ) onLoad( cached );
+
+				scope.manager.itemEnd( url );
+
+			}, 0 );
+
+			return cached;
+
+		}
+
+		const fetchOptions = {};
+		fetchOptions.credentials = ( this.crossOrigin === 'anonymous' ) ? 'same-origin' : 'include';
+		fetchOptions.headers = this.requestHeader;
+
+		const promise = fetch( url, fetchOptions ).then( function ( res ) {
+
+			return res.blob();
+
+		} ).then( function ( blob ) {
+
+			return createImageBitmap( blob, Object.assign( scope.options, { colorSpaceConversion: 'none' } ) );
+
+		} ).then( function ( imageBitmap ) {
+
+			Cache.add( url, imageBitmap );
+
+			if ( onLoad ) onLoad( imageBitmap );
+
+			scope.manager.itemEnd( url );
+
+			return imageBitmap;
+
+		} ).catch( function ( e ) {
+
+			if ( onError ) onError( e );
+
+			Cache.remove( url );
+
+			scope.manager.itemError( url );
+			scope.manager.itemEnd( url );
+
+		} );
+
+		Cache.add( url, promise );
+		scope.manager.itemStart( url );
+
+	}
+
+}
+
+let _context;
+
+class AudioContext {
+
+	static getContext() {
+
+		if ( _context === undefined ) {
+
+			_context = new ( window.AudioContext || window.webkitAudioContext )();
+
+		}
+
+		return _context;
+
+	}
+
+	static setContext( value ) {
+
+		_context = value;
+
+	}
+
+}
+
+class AudioLoader extends Loader {
+
+	constructor( manager ) {
+
+		super( manager );
+
+	}
+
+	load( url, onLoad, onProgress, onError ) {
+
+		const scope = this;
+
+		const loader = new FileLoader( this.manager );
+		loader.setResponseType( 'arraybuffer' );
+		loader.setPath( this.path );
+		loader.setRequestHeader( this.requestHeader );
+		loader.setWithCredentials( this.withCredentials );
+		loader.load( url, function ( buffer ) {
+
+			try {
+
+				// Create a copy of the buffer. The `decodeAudioData` method
+				// detaches the buffer when complete, preventing reuse.
+				const bufferCopy = buffer.slice( 0 );
+
+				const context = AudioContext.getContext();
+				context.decodeAudioData( bufferCopy, function ( audioBuffer ) {
+
+					onLoad( audioBuffer );
+
+				} ).catch( handleError );
+
+			} catch ( e ) {
+
+				handleError( e );
+
+			}
+
+		}, onProgress, onError );
+
+		function handleError( e ) {
+
+			if ( onError ) {
+
+				onError( e );
+
+			} else {
+
+				console.error( e );
+
+			}
+
+			scope.manager.itemError( url );
+
+		}
+
+	}
+
+}
+
+const _eyeRight = /*@__PURE__*/ new Matrix4();
+const _eyeLeft = /*@__PURE__*/ new Matrix4();
+const _projectionMatrix = /*@__PURE__*/ new Matrix4();
+
+class StereoCamera {
+
+	constructor() {
+
+		this.type = 'StereoCamera';
+
+		this.aspect = 1;
+
+		this.eyeSep = 0.064;
+
+		this.cameraL = new PerspectiveCamera();
+		this.cameraL.layers.enable( 1 );
+		this.cameraL.matrixAutoUpdate = false;
+
+		this.cameraR = new PerspectiveCamera();
+		this.cameraR.layers.enable( 2 );
+		this.cameraR.matrixAutoUpdate = false;
+
+		this._cache = {
+			focus: null,
+			fov: null,
+			aspect: null,
+			near: null,
+			far: null,
+			zoom: null,
+			eyeSep: null
+		};
+
+	}
+
+	update( camera ) {
+
+		const cache = this._cache;
+
+		const needsUpdate = cache.focus !== camera.focus || cache.fov !== camera.fov ||
+			cache.aspect !== camera.aspect * this.aspect || cache.near !== camera.near ||
+			cache.far !== camera.far || cache.zoom !== camera.zoom || cache.eyeSep !== this.eyeSep;
+
+		if ( needsUpdate ) {
+
+			cache.focus = camera.focus;
+			cache.fov = camera.fov;
+			cache.aspect = camera.aspect * this.aspect;
+			cache.near = camera.near;
+			cache.far = camera.far;
+			cache.zoom = camera.zoom;
+			cache.eyeSep = this.eyeSep;
+
+			// Off-axis stereoscopic effect based on
+			// http://paulbourke.net/stereographics/stereorender/
+
+			_projectionMatrix.copy( camera.projectionMatrix );
+			const eyeSepHalf = cache.eyeSep / 2;
+			const eyeSepOnProjection = eyeSepHalf * cache.near / cache.focus;
+			const ymax = ( cache.near * Math.tan( DEG2RAD * cache.fov * 0.5 ) ) / cache.zoom;
+			let xmin, xmax;
+
+			// translate xOffset
+
+			_eyeLeft.elements[ 12 ] = - eyeSepHalf;
+			_eyeRight.elements[ 12 ] = eyeSepHalf;
+
+			// for left eye
+
+			xmin = - ymax * cache.aspect + eyeSepOnProjection;
+			xmax = ymax * cache.aspect + eyeSepOnProjection;
+
+			_projectionMatrix.elements[ 0 ] = 2 * cache.near / ( xmax - xmin );
+			_projectionMatrix.elements[ 8 ] = ( xmax + xmin ) / ( xmax - xmin );
+
+			this.cameraL.projectionMatrix.copy( _projectionMatrix );
+
+			// for right eye
+
+			xmin = - ymax * cache.aspect - eyeSepOnProjection;
+			xmax = ymax * cache.aspect - eyeSepOnProjection;
+
+			_projectionMatrix.elements[ 0 ] = 2 * cache.near / ( xmax - xmin );
+			_projectionMatrix.elements[ 8 ] = ( xmax + xmin ) / ( xmax - xmin );
+
+			this.cameraR.projectionMatrix.copy( _projectionMatrix );
+
+		}
+
+		this.cameraL.matrixWorld.copy( camera.matrixWorld ).multiply( _eyeLeft );
+		this.cameraR.matrixWorld.copy( camera.matrixWorld ).multiply( _eyeRight );
+
+	}
+
+}
+
+class Clock {
+
+	constructor( autoStart = true ) {
+
+		this.autoStart = autoStart;
+
+		this.startTime = 0;
+		this.oldTime = 0;
+		this.elapsedTime = 0;
+
+		this.running = false;
+
+	}
+
+	start() {
+
+		this.startTime = now();
+
+		this.oldTime = this.startTime;
+		this.elapsedTime = 0;
+		this.running = true;
+
+	}
+
+	stop() {
+
+		this.getElapsedTime();
+		this.running = false;
+		this.autoStart = false;
+
+	}
+
+	getElapsedTime() {
+
+		this.getDelta();
+		return this.elapsedTime;
+
+	}
+
+	getDelta() {
+
+		let diff = 0;
+
+		if ( this.autoStart && ! this.running ) {
+
+			this.start();
+			return 0;
+
+		}
+
+		if ( this.running ) {
+
+			const newTime = now();
+
+			diff = ( newTime - this.oldTime ) / 1000;
+			this.oldTime = newTime;
+
+			this.elapsedTime += diff;
+
+		}
+
+		return diff;
+
+	}
+
+}
+
+function now() {
+
+	return performance.now();
+
+}
+
+const _position$1 = /*@__PURE__*/ new Vector3();
+const _quaternion$1 = /*@__PURE__*/ new Quaternion();
+const _scale$1 = /*@__PURE__*/ new Vector3();
+const _orientation$1 = /*@__PURE__*/ new Vector3();
+
+class AudioListener extends Object3D {
+
+	constructor() {
+
+		super();
+
+		this.type = 'AudioListener';
+
+		this.context = AudioContext.getContext();
+
+		this.gain = this.context.createGain();
+		this.gain.connect( this.context.destination );
+
+		this.filter = null;
+
+		this.timeDelta = 0;
+
+		// private
+
+		this._clock = new Clock();
+
+	}
+
+	getInput() {
+
+		return this.gain;
+
+	}
+
+	removeFilter() {
+
+		if ( this.filter !== null ) {
+
+			this.gain.disconnect( this.filter );
+			this.filter.disconnect( this.context.destination );
+			this.gain.connect( this.context.destination );
+			this.filter = null;
+
+		}
+
+		return this;
+
+	}
+
+	getFilter() {
+
+		return this.filter;
+
+	}
+
+	setFilter( value ) {
+
+		if ( this.filter !== null ) {
+
+			this.gain.disconnect( this.filter );
+			this.filter.disconnect( this.context.destination );
+
+		} else {
+
+			this.gain.disconnect( this.context.destination );
+
+		}
+
+		this.filter = value;
+		this.gain.connect( this.filter );
+		this.filter.connect( this.context.destination );
+
+		return this;
+
+	}
+
+	getMasterVolume() {
+
+		return this.gain.gain.value;
+
+	}
+
+	setMasterVolume( value ) {
+
+		this.gain.gain.setTargetAtTime( value, this.context.currentTime, 0.01 );
+
+		return this;
+
+	}
+
+	updateMatrixWorld( force ) {
+
+		super.updateMatrixWorld( force );
+
+		const listener = this.context.listener;
+		const up = this.up;
+
+		this.timeDelta = this._clock.getDelta();
+
+		this.matrixWorld.decompose( _position$1, _quaternion$1, _scale$1 );
+
+		_orientation$1.set( 0, 0, - 1 ).applyQuaternion( _quaternion$1 );
+
+		if ( listener.positionX ) {
+
+			// code path for Chrome (see #14393)
+
+			const endTime = this.context.currentTime + this.timeDelta;
+
+			listener.positionX.linearRampToValueAtTime( _position$1.x, endTime );
+			listener.positionY.linearRampToValueAtTime( _position$1.y, endTime );
+			listener.positionZ.linearRampToValueAtTime( _position$1.z, endTime );
+			listener.forwardX.linearRampToValueAtTime( _orientation$1.x, endTime );
+			listener.forwardY.linearRampToValueAtTime( _orientation$1.y, endTime );
+			listener.forwardZ.linearRampToValueAtTime( _orientation$1.z, endTime );
+			listener.upX.linearRampToValueAtTime( up.x, endTime );
+			listener.upY.linearRampToValueAtTime( up.y, endTime );
+			listener.upZ.linearRampToValueAtTime( up.z, endTime );
+
+		} else {
+
+			listener.setPosition( _position$1.x, _position$1.y, _position$1.z );
+			listener.setOrientation( _orientation$1.x, _orientation$1.y, _orientation$1.z, up.x, up.y, up.z );
+
+		}
+
+	}
+
+}
+
+class Audio extends Object3D {
+
+	constructor( listener ) {
+
+		super();
+
+		this.type = 'Audio';
+
+		this.listener = listener;
+		this.context = listener.context;
+
+		this.gain = this.context.createGain();
+		this.gain.connect( listener.getInput() );
+
+		this.autoplay = false;
+
+		this.buffer = null;
+		this.detune = 0;
+		this.loop = false;
+		this.loopStart = 0;
+		this.loopEnd = 0;
+		this.offset = 0;
+		this.duration = undefined;
+		this.playbackRate = 1;
+		this.isPlaying = false;
+		this.hasPlaybackControl = true;
+		this.source = null;
+		this.sourceType = 'empty';
+
+		this._startedAt = 0;
+		this._progress = 0;
+		this._connected = false;
+
+		this.filters = [];
+
+	}
+
+	getOutput() {
+
+		return this.gain;
+
+	}
+
+	setNodeSource( audioNode ) {
+
+		this.hasPlaybackControl = false;
+		this.sourceType = 'audioNode';
+		this.source = audioNode;
+		this.connect();
+
+		return this;
+
+	}
+
+	setMediaElementSource( mediaElement ) {
+
+		this.hasPlaybackControl = false;
+		this.sourceType = 'mediaNode';
+		this.source = this.context.createMediaElementSource( mediaElement );
+		this.connect();
+
+		return this;
+
+	}
+
+	setMediaStreamSource( mediaStream ) {
+
+		this.hasPlaybackControl = false;
+		this.sourceType = 'mediaStreamNode';
+		this.source = this.context.createMediaStreamSource( mediaStream );
+		this.connect();
+
+		return this;
+
+	}
+
+	setBuffer( audioBuffer ) {
+
+		this.buffer = audioBuffer;
+		this.sourceType = 'buffer';
+
+		if ( this.autoplay ) this.play();
+
+		return this;
+
+	}
+
+	play( delay = 0 ) {
+
+		if ( this.isPlaying === true ) {
+
+			console.warn( 'THREE.Audio: Audio is already playing.' );
+			return;
+
+		}
+
+		if ( this.hasPlaybackControl === false ) {
+
+			console.warn( 'THREE.Audio: this Audio has no playback control.' );
+			return;
+
+		}
+
+		this._startedAt = this.context.currentTime + delay;
+
+		const source = this.context.createBufferSource();
+		source.buffer = this.buffer;
+		source.loop = this.loop;
+		source.loopStart = this.loopStart;
+		source.loopEnd = this.loopEnd;
+		source.onended = this.onEnded.bind( this );
+		source.start( this._startedAt, this._progress + this.offset, this.duration );
+
+		this.isPlaying = true;
+
+		this.source = source;
+
+		this.setDetune( this.detune );
+		this.setPlaybackRate( this.playbackRate );
+
+		return this.connect();
+
+	}
+
+	pause() {
+
+		if ( this.hasPlaybackControl === false ) {
+
+			console.warn( 'THREE.Audio: this Audio has no playback control.' );
+			return;
+
+		}
+
+		if ( this.isPlaying === true ) {
+
+			// update current progress
+
+			this._progress += Math.max( this.context.currentTime - this._startedAt, 0 ) * this.playbackRate;
+
+			if ( this.loop === true ) {
+
+				// ensure _progress does not exceed duration with looped audios
+
+				this._progress = this._progress % ( this.duration || this.buffer.duration );
+
+			}
+
+			this.source.stop();
+			this.source.onended = null;
+
+			this.isPlaying = false;
+
+		}
+
+		return this;
+
+	}
+
+	stop( delay = 0 ) {
+
+		if ( this.hasPlaybackControl === false ) {
+
+			console.warn( 'THREE.Audio: this Audio has no playback control.' );
+			return;
+
+		}
+
+		this._progress = 0;
+
+		if ( this.source !== null ) {
+
+			this.source.stop( this.context.currentTime + delay );
+			this.source.onended = null;
+
+		}
+
+		this.isPlaying = false;
+
+		return this;
+
+	}
+
+	connect() {
+
+		if ( this.filters.length > 0 ) {
+
+			this.source.connect( this.filters[ 0 ] );
+
+			for ( let i = 1, l = this.filters.length; i < l; i ++ ) {
+
+				this.filters[ i - 1 ].connect( this.filters[ i ] );
+
+			}
+
+			this.filters[ this.filters.length - 1 ].connect( this.getOutput() );
+
+		} else {
+
+			this.source.connect( this.getOutput() );
+
+		}
+
+		this._connected = true;
+
+		return this;
+
+	}
+
+	disconnect() {
+
+		if ( this._connected === false ) {
+
+			return;
+
+		}
+
+		if ( this.filters.length > 0 ) {
+
+			this.source.disconnect( this.filters[ 0 ] );
+
+			for ( let i = 1, l = this.filters.length; i < l; i ++ ) {
+
+				this.filters[ i - 1 ].disconnect( this.filters[ i ] );
+
+			}
+
+			this.filters[ this.filters.length - 1 ].disconnect( this.getOutput() );
+
+		} else {
+
+			this.source.disconnect( this.getOutput() );
+
+		}
+
+		this._connected = false;
+
+		return this;
+
+	}
+
+	getFilters() {
+
+		return this.filters;
+
+	}
+
+	setFilters( value ) {
+
+		if ( ! value ) value = [];
+
+		if ( this._connected === true ) {
+
+			this.disconnect();
+			this.filters = value.slice();
+			this.connect();
+
+		} else {
+
+			this.filters = value.slice();
+
+		}
+
+		return this;
+
+	}
+
+	setDetune( value ) {
+
+		this.detune = value;
+
+		if ( this.isPlaying === true && this.source.detune !== undefined ) {
+
+			this.source.detune.setTargetAtTime( this.detune, this.context.currentTime, 0.01 );
+
+		}
+
+		return this;
+
+	}
+
+	getDetune() {
+
+		return this.detune;
+
+	}
+
+	getFilter() {
+
+		return this.getFilters()[ 0 ];
+
+	}
+
+	setFilter( filter ) {
+
+		return this.setFilters( filter ? [ filter ] : [] );
+
+	}
+
+	setPlaybackRate( value ) {
+
+		if ( this.hasPlaybackControl === false ) {
+
+			console.warn( 'THREE.Audio: this Audio has no playback control.' );
+			return;
+
+		}
+
+		this.playbackRate = value;
+
+		if ( this.isPlaying === true ) {
+
+			this.source.playbackRate.setTargetAtTime( this.playbackRate, this.context.currentTime, 0.01 );
+
+		}
+
+		return this;
+
+	}
+
+	getPlaybackRate() {
+
+		return this.playbackRate;
+
+	}
+
+	onEnded() {
+
+		this.isPlaying = false;
+
+	}
+
+	getLoop() {
+
+		if ( this.hasPlaybackControl === false ) {
+
+			console.warn( 'THREE.Audio: this Audio has no playback control.' );
+			return false;
+
+		}
+
+		return this.loop;
+
+	}
+
+	setLoop( value ) {
+
+		if ( this.hasPlaybackControl === false ) {
+
+			console.warn( 'THREE.Audio: this Audio has no playback control.' );
+			return;
+
+		}
+
+		this.loop = value;
+
+		if ( this.isPlaying === true ) {
+
+			this.source.loop = this.loop;
+
+		}
+
+		return this;
+
+	}
+
+	setLoopStart( value ) {
+
+		this.loopStart = value;
+
+		return this;
+
+	}
+
+	setLoopEnd( value ) {
+
+		this.loopEnd = value;
+
+		return this;
+
+	}
+
+	getVolume() {
+
+		return this.gain.gain.value;
+
+	}
+
+	setVolume( value ) {
+
+		this.gain.gain.setTargetAtTime( value, this.context.currentTime, 0.01 );
+
+		return this;
+
+	}
+
+}
+
+const _position = /*@__PURE__*/ new Vector3();
+const _quaternion = /*@__PURE__*/ new Quaternion();
+const _scale = /*@__PURE__*/ new Vector3();
+const _orientation = /*@__PURE__*/ new Vector3();
+
+class PositionalAudio extends Audio {
+
+	constructor( listener ) {
+
+		super( listener );
+
+		this.panner = this.context.createPanner();
+		this.panner.panningModel = 'HRTF';
+		this.panner.connect( this.gain );
+
+	}
+
+	connect() {
+
+		super.connect();
+
+		this.panner.connect( this.gain );
+
+	}
+
+	disconnect() {
+
+		super.disconnect();
+
+		this.panner.disconnect( this.gain );
+
+	}
+
+	getOutput() {
+
+		return this.panner;
+
+	}
+
+	getRefDistance() {
+
+		return this.panner.refDistance;
+
+	}
+
+	setRefDistance( value ) {
+
+		this.panner.refDistance = value;
+
+		return this;
+
+	}
+
+	getRolloffFactor() {
+
+		return this.panner.rolloffFactor;
+
+	}
+
+	setRolloffFactor( value ) {
+
+		this.panner.rolloffFactor = value;
+
+		return this;
+
+	}
+
+	getDistanceModel() {
+
+		return this.panner.distanceModel;
+
+	}
+
+	setDistanceModel( value ) {
+
+		this.panner.distanceModel = value;
+
+		return this;
+
+	}
+
+	getMaxDistance() {
+
+		return this.panner.maxDistance;
+
+	}
+
+	setMaxDistance( value ) {
+
+		this.panner.maxDistance = value;
+
+		return this;
+
+	}
+
+	setDirectionalCone( coneInnerAngle, coneOuterAngle, coneOuterGain ) {
+
+		this.panner.coneInnerAngle = coneInnerAngle;
+		this.panner.coneOuterAngle = coneOuterAngle;
+		this.panner.coneOuterGain = coneOuterGain;
+
+		return this;
+
+	}
+
+	updateMatrixWorld( force ) {
+
+		super.updateMatrixWorld( force );
+
+		if ( this.hasPlaybackControl === true && this.isPlaying === false ) return;
+
+		this.matrixWorld.decompose( _position, _quaternion, _scale );
+
+		_orientation.set( 0, 0, 1 ).applyQuaternion( _quaternion );
+
+		const panner = this.panner;
+
+		if ( panner.positionX ) {
+
+			// code path for Chrome and Firefox (see #14393)
+
+			const endTime = this.context.currentTime + this.listener.timeDelta;
+
+			panner.positionX.linearRampToValueAtTime( _position.x, endTime );
+			panner.positionY.linearRampToValueAtTime( _position.y, endTime );
+			panner.positionZ.linearRampToValueAtTime( _position.z, endTime );
+			panner.orientationX.linearRampToValueAtTime( _orientation.x, endTime );
+			panner.orientationY.linearRampToValueAtTime( _orientation.y, endTime );
+			panner.orientationZ.linearRampToValueAtTime( _orientation.z, endTime );
+
+		} else {
+
+			panner.setPosition( _position.x, _position.y, _position.z );
+			panner.setOrientation( _orientation.x, _orientation.y, _orientation.z );
+
+		}
+
+	}
+
+}
+
+class AudioAnalyser {
+
+	constructor( audio, fftSize = 2048 ) {
+
+		this.analyser = audio.context.createAnalyser();
+		this.analyser.fftSize = fftSize;
+
+		this.data = new Uint8Array( this.analyser.frequencyBinCount );
+
+		audio.getOutput().connect( this.analyser );
+
+	}
+
+
+	getFrequencyData() {
+
+		this.analyser.getByteFrequencyData( this.data );
+
+		return this.data;
+
+	}
+
+	getAverageFrequency() {
+
+		let value = 0;
+		const data = this.getFrequencyData();
+
+		for ( let i = 0; i < data.length; i ++ ) {
+
+			value += data[ i ];
+
+		}
+
+		return value / data.length;
+
+	}
+
+}
+
+class PropertyMixer {
+
+	constructor( binding, typeName, valueSize ) {
+
+		this.binding = binding;
+		this.valueSize = valueSize;
+
+		let mixFunction,
+			mixFunctionAdditive,
+			setIdentity;
+
+		// buffer layout: [ incoming | accu0 | accu1 | orig | addAccu | (optional work) ]
+		//
+		// interpolators can use .buffer as their .result
+		// the data then goes to 'incoming'
+		//
+		// 'accu0' and 'accu1' are used frame-interleaved for
+		// the cumulative result and are compared to detect
+		// changes
+		//
+		// 'orig' stores the original state of the property
+		//
+		// 'add' is used for additive cumulative results
+		//
+		// 'work' is optional and is only present for quaternion types. It is used
+		// to store intermediate quaternion multiplication results
+
+		switch ( typeName ) {
+
+			case 'quaternion':
+				mixFunction = this._slerp;
+				mixFunctionAdditive = this._slerpAdditive;
+				setIdentity = this._setAdditiveIdentityQuaternion;
+
+				this.buffer = new Float64Array( valueSize * 6 );
+				this._workIndex = 5;
+				break;
+
+			case 'string':
+			case 'bool':
+				mixFunction = this._select;
+
+				// Use the regular mix function and for additive on these types,
+				// additive is not relevant for non-numeric types
+				mixFunctionAdditive = this._select;
+
+				setIdentity = this._setAdditiveIdentityOther;
+
+				this.buffer = new Array( valueSize * 5 );
+				break;
+
+			default:
+				mixFunction = this._lerp;
+				mixFunctionAdditive = this._lerpAdditive;
+				setIdentity = this._setAdditiveIdentityNumeric;
+
+				this.buffer = new Float64Array( valueSize * 5 );
+
+		}
+
+		this._mixBufferRegion = mixFunction;
+		this._mixBufferRegionAdditive = mixFunctionAdditive;
+		this._setIdentity = setIdentity;
+		this._origIndex = 3;
+		this._addIndex = 4;
+
+		this.cumulativeWeight = 0;
+		this.cumulativeWeightAdditive = 0;
+
+		this.useCount = 0;
+		this.referenceCount = 0;
+
+	}
+
+	// accumulate data in the 'incoming' region into 'accu<i>'
+	accumulate( accuIndex, weight ) {
+
+		// note: happily accumulating nothing when weight = 0, the caller knows
+		// the weight and shouldn't have made the call in the first place
+
+		const buffer = this.buffer,
+			stride = this.valueSize,
+			offset = accuIndex * stride + stride;
+
+		let currentWeight = this.cumulativeWeight;
+
+		if ( currentWeight === 0 ) {
+
+			// accuN := incoming * weight
+
+			for ( let i = 0; i !== stride; ++ i ) {
+
+				buffer[ offset + i ] = buffer[ i ];
+
+			}
+
+			currentWeight = weight;
+
+		} else {
+
+			// accuN := accuN + incoming * weight
+
+			currentWeight += weight;
+			const mix = weight / currentWeight;
+			this._mixBufferRegion( buffer, offset, 0, mix, stride );
+
+		}
+
+		this.cumulativeWeight = currentWeight;
+
+	}
+
+	// accumulate data in the 'incoming' region into 'add'
+	accumulateAdditive( weight ) {
+
+		const buffer = this.buffer,
+			stride = this.valueSize,
+			offset = stride * this._addIndex;
+
+		if ( this.cumulativeWeightAdditive === 0 ) {
+
+			// add = identity
+
+			this._setIdentity();
+
+		}
+
+		// add := add + incoming * weight
+
+		this._mixBufferRegionAdditive( buffer, offset, 0, weight, stride );
+		this.cumulativeWeightAdditive += weight;
+
+	}
+
+	// apply the state of 'accu<i>' to the binding when accus differ
+	apply( accuIndex ) {
+
+		const stride = this.valueSize,
+			buffer = this.buffer,
+			offset = accuIndex * stride + stride,
+
+			weight = this.cumulativeWeight,
+			weightAdditive = this.cumulativeWeightAdditive,
+
+			binding = this.binding;
+
+		this.cumulativeWeight = 0;
+		this.cumulativeWeightAdditive = 0;
+
+		if ( weight < 1 ) {
+
+			// accuN := accuN + original * ( 1 - cumulativeWeight )
+
+			const originalValueOffset = stride * this._origIndex;
+
+			this._mixBufferRegion(
+				buffer, offset, originalValueOffset, 1 - weight, stride );
+
+		}
+
+		if ( weightAdditive > 0 ) {
+
+			// accuN := accuN + additive accuN
+
+			this._mixBufferRegionAdditive( buffer, offset, this._addIndex * stride, 1, stride );
+
+		}
+
+		for ( let i = stride, e = stride + stride; i !== e; ++ i ) {
+
+			if ( buffer[ i ] !== buffer[ i + stride ] ) {
+
+				// value has changed -> update scene graph
+
+				binding.setValue( buffer, offset );
+				break;
+
+			}
+
+		}
+
+	}
+
+	// remember the state of the bound property and copy it to both accus
+	saveOriginalState() {
+
+		const binding = this.binding;
+
+		const buffer = this.buffer,
+			stride = this.valueSize,
+
+			originalValueOffset = stride * this._origIndex;
+
+		binding.getValue( buffer, originalValueOffset );
+
+		// accu[0..1] := orig -- initially detect changes against the original
+		for ( let i = stride, e = originalValueOffset; i !== e; ++ i ) {
+
+			buffer[ i ] = buffer[ originalValueOffset + ( i % stride ) ];
+
+		}
+
+		// Add to identity for additive
+		this._setIdentity();
+
+		this.cumulativeWeight = 0;
+		this.cumulativeWeightAdditive = 0;
+
+	}
+
+	// apply the state previously taken via 'saveOriginalState' to the binding
+	restoreOriginalState() {
+
+		const originalValueOffset = this.valueSize * 3;
+		this.binding.setValue( this.buffer, originalValueOffset );
+
+	}
+
+	_setAdditiveIdentityNumeric() {
+
+		const startIndex = this._addIndex * this.valueSize;
+		const endIndex = startIndex + this.valueSize;
+
+		for ( let i = startIndex; i < endIndex; i ++ ) {
+
+			this.buffer[ i ] = 0;
+
+		}
+
+	}
+
+	_setAdditiveIdentityQuaternion() {
+
+		this._setAdditiveIdentityNumeric();
+		this.buffer[ this._addIndex * this.valueSize + 3 ] = 1;
+
+	}
+
+	_setAdditiveIdentityOther() {
+
+		const startIndex = this._origIndex * this.valueSize;
+		const targetIndex = this._addIndex * this.valueSize;
+
+		for ( let i = 0; i < this.valueSize; i ++ ) {
+
+			this.buffer[ targetIndex + i ] = this.buffer[ startIndex + i ];
+
+		}
+
+	}
+
+
+	// mix functions
+
+	_select( buffer, dstOffset, srcOffset, t, stride ) {
+
+		if ( t >= 0.5 ) {
+
+			for ( let i = 0; i !== stride; ++ i ) {
+
+				buffer[ dstOffset + i ] = buffer[ srcOffset + i ];
+
+			}
+
+		}
+
+	}
+
+	_slerp( buffer, dstOffset, srcOffset, t ) {
+
+		Quaternion.slerpFlat( buffer, dstOffset, buffer, dstOffset, buffer, srcOffset, t );
+
+	}
+
+	_slerpAdditive( buffer, dstOffset, srcOffset, t, stride ) {
+
+		const workOffset = this._workIndex * stride;
+
+		// Store result in intermediate buffer offset
+		Quaternion.multiplyQuaternionsFlat( buffer, workOffset, buffer, dstOffset, buffer, srcOffset );
+
+		// Slerp to the intermediate result
+		Quaternion.slerpFlat( buffer, dstOffset, buffer, dstOffset, buffer, workOffset, t );
+
+	}
+
+	_lerp( buffer, dstOffset, srcOffset, t, stride ) {
+
+		const s = 1 - t;
+
+		for ( let i = 0; i !== stride; ++ i ) {
+
+			const j = dstOffset + i;
+
+			buffer[ j ] = buffer[ j ] * s + buffer[ srcOffset + i ] * t;
+
+		}
+
+	}
+
+	_lerpAdditive( buffer, dstOffset, srcOffset, t, stride ) {
+
+		for ( let i = 0; i !== stride; ++ i ) {
+
+			const j = dstOffset + i;
+
+			buffer[ j ] = buffer[ j ] + buffer[ srcOffset + i ] * t;
+
+		}
+
+	}
+
+}
+
+// Characters [].:/ are reserved for track binding syntax.
+const _RESERVED_CHARS_RE = '\\[\\]\\.:\\/';
+const _reservedRe = new RegExp( '[' + _RESERVED_CHARS_RE + ']', 'g' );
+
+// Attempts to allow node names from any language. ES5's `\w` regexp matches
+// only latin characters, and the unicode \p{L} is not yet supported. So
+// instead, we exclude reserved characters and match everything else.
+const _wordChar = '[^' + _RESERVED_CHARS_RE + ']';
+const _wordCharOrDot = '[^' + _RESERVED_CHARS_RE.replace( '\\.', '' ) + ']';
+
+// Parent directories, delimited by '/' or ':'. Currently unused, but must
+// be matched to parse the rest of the track name.
+const _directoryRe = /*@__PURE__*/ /((?:WC+[\/:])*)/.source.replace( 'WC', _wordChar );
+
+// Target node. May contain word characters (a-zA-Z0-9_) and '.' or '-'.
+const _nodeRe = /*@__PURE__*/ /(WCOD+)?/.source.replace( 'WCOD', _wordCharOrDot );
+
+// Object on target node, and accessor. May not contain reserved
+// characters. Accessor may contain any character except closing bracket.
+const _objectRe = /*@__PURE__*/ /(?:\.(WC+)(?:\[(.+)\])?)?/.source.replace( 'WC', _wordChar );
+
+// Property and accessor. May not contain reserved characters. Accessor may
+// contain any non-bracket characters.
+const _propertyRe = /*@__PURE__*/ /\.(WC+)(?:\[(.+)\])?/.source.replace( 'WC', _wordChar );
+
+const _trackRe = new RegExp( ''
+	+ '^'
+	+ _directoryRe
+	+ _nodeRe
+	+ _objectRe
+	+ _propertyRe
+	+ '$'
+);
+
+const _supportedObjectNames = [ 'material', 'materials', 'bones', 'map' ];
+
+class Composite {
+
+	constructor( targetGroup, path, optionalParsedPath ) {
+
+		const parsedPath = optionalParsedPath || PropertyBinding.parseTrackName( path );
+
+		this._targetGroup = targetGroup;
+		this._bindings = targetGroup.subscribe_( path, parsedPath );
+
+	}
+
+	getValue( array, offset ) {
+
+		this.bind(); // bind all binding
+
+		const firstValidIndex = this._targetGroup.nCachedObjects_,
+			binding = this._bindings[ firstValidIndex ];
+
+		// and only call .getValue on the first
+		if ( binding !== undefined ) binding.getValue( array, offset );
+
+	}
+
+	setValue( array, offset ) {
+
+		const bindings = this._bindings;
+
+		for ( let i = this._targetGroup.nCachedObjects_, n = bindings.length; i !== n; ++ i ) {
+
+			bindings[ i ].setValue( array, offset );
+
+		}
+
+	}
+
+	bind() {
+
+		const bindings = this._bindings;
+
+		for ( let i = this._targetGroup.nCachedObjects_, n = bindings.length; i !== n; ++ i ) {
+
+			bindings[ i ].bind();
+
+		}
+
+	}
+
+	unbind() {
+
+		const bindings = this._bindings;
+
+		for ( let i = this._targetGroup.nCachedObjects_, n = bindings.length; i !== n; ++ i ) {
+
+			bindings[ i ].unbind();
+
+		}
+
+	}
+
+}
+
+// Note: This class uses a State pattern on a per-method basis:
+// 'bind' sets 'this.getValue' / 'setValue' and shadows the
+// prototype version of these methods with one that represents
+// the bound state. When the property is not found, the methods
+// become no-ops.
+class PropertyBinding {
+
+	constructor( rootNode, path, parsedPath ) {
+
+		this.path = path;
+		this.parsedPath = parsedPath || PropertyBinding.parseTrackName( path );
+
+		this.node = PropertyBinding.findNode( rootNode, this.parsedPath.nodeName );
+
+		this.rootNode = rootNode;
+
+		// initial state of these methods that calls 'bind'
+		this.getValue = this._getValue_unbound;
+		this.setValue = this._setValue_unbound;
+
+	}
+
+
+	static create( root, path, parsedPath ) {
+
+		if ( ! ( root && root.isAnimationObjectGroup ) ) {
+
+			return new PropertyBinding( root, path, parsedPath );
+
+		} else {
+
+			return new PropertyBinding.Composite( root, path, parsedPath );
+
+		}
+
+	}
+
+	/**
+	 * Replaces spaces with underscores and removes unsupported characters from
+	 * node names, to ensure compatibility with parseTrackName().
+	 *
+	 * @param {string} name Node name to be sanitized.
+	 * @return {string}
+	 */
+	static sanitizeNodeName( name ) {
+
+		return name.replace( /\s/g, '_' ).replace( _reservedRe, '' );
+
+	}
+
+	static parseTrackName( trackName ) {
+
+		const matches = _trackRe.exec( trackName );
+
+		if ( matches === null ) {
+
+			throw new Error( 'PropertyBinding: Cannot parse trackName: ' + trackName );
+
+		}
+
+		const results = {
+			// directoryName: matches[ 1 ], // (tschw) currently unused
+			nodeName: matches[ 2 ],
+			objectName: matches[ 3 ],
+			objectIndex: matches[ 4 ],
+			propertyName: matches[ 5 ], // required
+			propertyIndex: matches[ 6 ]
+		};
+
+		const lastDot = results.nodeName && results.nodeName.lastIndexOf( '.' );
+
+		if ( lastDot !== undefined && lastDot !== - 1 ) {
+
+			const objectName = results.nodeName.substring( lastDot + 1 );
+
+			// Object names must be checked against an allowlist. Otherwise, there
+			// is no way to parse 'foo.bar.baz': 'baz' must be a property, but
+			// 'bar' could be the objectName, or part of a nodeName (which can
+			// include '.' characters).
+			if ( _supportedObjectNames.indexOf( objectName ) !== - 1 ) {
+
+				results.nodeName = results.nodeName.substring( 0, lastDot );
+				results.objectName = objectName;
+
+			}
+
+		}
+
+		if ( results.propertyName === null || results.propertyName.length === 0 ) {
+
+			throw new Error( 'PropertyBinding: can not parse propertyName from trackName: ' + trackName );
+
+		}
+
+		return results;
+
+	}
+
+	static findNode( root, nodeName ) {
+
+		if ( nodeName === undefined || nodeName === '' || nodeName === '.' || nodeName === - 1 || nodeName === root.name || nodeName === root.uuid ) {
+
+			return root;
+
+		}
+
+		// search into skeleton bones.
+		if ( root.skeleton ) {
+
+			const bone = root.skeleton.getBoneByName( nodeName );
+
+			if ( bone !== undefined ) {
+
+				return bone;
+
+			}
+
+		}
+
+		// search into node subtree.
+		if ( root.children ) {
+
+			const searchNodeSubtree = function ( children ) {
+
+				for ( let i = 0; i < children.length; i ++ ) {
+
+					const childNode = children[ i ];
+
+					if ( childNode.name === nodeName || childNode.uuid === nodeName ) {
+
+						return childNode;
+
+					}
+
+					const result = searchNodeSubtree( childNode.children );
+
+					if ( result ) return result;
+
+				}
+
+				return null;
+
+			};
+
+			const subTreeNode = searchNodeSubtree( root.children );
+
+			if ( subTreeNode ) {
+
+				return subTreeNode;
+
+			}
+
+		}
+
+		return null;
+
+	}
+
+	// these are used to "bind" a nonexistent property
+	_getValue_unavailable() {}
+	_setValue_unavailable() {}
+
+	// Getters
+
+	_getValue_direct( buffer, offset ) {
+
+		buffer[ offset ] = this.targetObject[ this.propertyName ];
+
+	}
+
+	_getValue_array( buffer, offset ) {
+
+		const source = this.resolvedProperty;
+
+		for ( let i = 0, n = source.length; i !== n; ++ i ) {
+
+			buffer[ offset ++ ] = source[ i ];
+
+		}
+
+	}
+
+	_getValue_arrayElement( buffer, offset ) {
+
+		buffer[ offset ] = this.resolvedProperty[ this.propertyIndex ];
+
+	}
+
+	_getValue_toArray( buffer, offset ) {
+
+		this.resolvedProperty.toArray( buffer, offset );
+
+	}
+
+	// Direct
+
+	_setValue_direct( buffer, offset ) {
+
+		this.targetObject[ this.propertyName ] = buffer[ offset ];
+
+	}
+
+	_setValue_direct_setNeedsUpdate( buffer, offset ) {
+
+		this.targetObject[ this.propertyName ] = buffer[ offset ];
+		this.targetObject.needsUpdate = true;
+
+	}
+
+	_setValue_direct_setMatrixWorldNeedsUpdate( buffer, offset ) {
+
+		this.targetObject[ this.propertyName ] = buffer[ offset ];
+		this.targetObject.matrixWorldNeedsUpdate = true;
+
+	}
+
+	// EntireArray
+
+	_setValue_array( buffer, offset ) {
+
+		const dest = this.resolvedProperty;
+
+		for ( let i = 0, n = dest.length; i !== n; ++ i ) {
+
+			dest[ i ] = buffer[ offset ++ ];
+
+		}
+
+	}
+
+	_setValue_array_setNeedsUpdate( buffer, offset ) {
+
+		const dest = this.resolvedProperty;
+
+		for ( let i = 0, n = dest.length; i !== n; ++ i ) {
+
+			dest[ i ] = buffer[ offset ++ ];
+
+		}
+
+		this.targetObject.needsUpdate = true;
+
+	}
+
+	_setValue_array_setMatrixWorldNeedsUpdate( buffer, offset ) {
+
+		const dest = this.resolvedProperty;
+
+		for ( let i = 0, n = dest.length; i !== n; ++ i ) {
+
+			dest[ i ] = buffer[ offset ++ ];
+
+		}
+
+		this.targetObject.matrixWorldNeedsUpdate = true;
+
+	}
+
+	// ArrayElement
+
+	_setValue_arrayElement( buffer, offset ) {
+
+		this.resolvedProperty[ this.propertyIndex ] = buffer[ offset ];
+
+	}
+
+	_setValue_arrayElement_setNeedsUpdate( buffer, offset ) {
+
+		this.resolvedProperty[ this.propertyIndex ] = buffer[ offset ];
+		this.targetObject.needsUpdate = true;
+
+	}
+
+	_setValue_arrayElement_setMatrixWorldNeedsUpdate( buffer, offset ) {
+
+		this.resolvedProperty[ this.propertyIndex ] = buffer[ offset ];
+		this.targetObject.matrixWorldNeedsUpdate = true;
+
+	}
+
+	// HasToFromArray
+
+	_setValue_fromArray( buffer, offset ) {
+
+		this.resolvedProperty.fromArray( buffer, offset );
+
+	}
+
+	_setValue_fromArray_setNeedsUpdate( buffer, offset ) {
+
+		this.resolvedProperty.fromArray( buffer, offset );
+		this.targetObject.needsUpdate = true;
+
+	}
+
+	_setValue_fromArray_setMatrixWorldNeedsUpdate( buffer, offset ) {
+
+		this.resolvedProperty.fromArray( buffer, offset );
+		this.targetObject.matrixWorldNeedsUpdate = true;
+
+	}
+
+	_getValue_unbound( targetArray, offset ) {
+
+		this.bind();
+		this.getValue( targetArray, offset );
+
+	}
+
+	_setValue_unbound( sourceArray, offset ) {
+
+		this.bind();
+		this.setValue( sourceArray, offset );
+
+	}
+
+	// create getter / setter pair for a property in the scene graph
+	bind() {
+
+		let targetObject = this.node;
+		const parsedPath = this.parsedPath;
+
+		const objectName = parsedPath.objectName;
+		const propertyName = parsedPath.propertyName;
+		let propertyIndex = parsedPath.propertyIndex;
+
+		if ( ! targetObject ) {
+
+			targetObject = PropertyBinding.findNode( this.rootNode, parsedPath.nodeName );
+
+			this.node = targetObject;
+
+		}
+
+		// set fail state so we can just 'return' on error
+		this.getValue = this._getValue_unavailable;
+		this.setValue = this._setValue_unavailable;
+
+		// ensure there is a value node
+		if ( ! targetObject ) {
+
+			console.warn( 'THREE.PropertyBinding: No target node found for track: ' + this.path + '.' );
+			return;
+
+		}
+
+		if ( objectName ) {
+
+			let objectIndex = parsedPath.objectIndex;
+
+			// special cases were we need to reach deeper into the hierarchy to get the face materials....
+			switch ( objectName ) {
+
+				case 'materials':
+
+					if ( ! targetObject.material ) {
+
+						console.error( 'THREE.PropertyBinding: Can not bind to material as node does not have a material.', this );
+						return;
+
+					}
+
+					if ( ! targetObject.material.materials ) {
+
+						console.error( 'THREE.PropertyBinding: Can not bind to material.materials as node.material does not have a materials array.', this );
+						return;
+
+					}
+
+					targetObject = targetObject.material.materials;
+
+					break;
+
+				case 'bones':
+
+					if ( ! targetObject.skeleton ) {
+
+						console.error( 'THREE.PropertyBinding: Can not bind to bones as node does not have a skeleton.', this );
+						return;
+
+					}
+
+					// potential future optimization: skip this if propertyIndex is already an integer
+					// and convert the integer string to a true integer.
+
+					targetObject = targetObject.skeleton.bones;
+
+					// support resolving morphTarget names into indices.
+					for ( let i = 0; i < targetObject.length; i ++ ) {
+
+						if ( targetObject[ i ].name === objectIndex ) {
+
+							objectIndex = i;
+							break;
+
+						}
+
+					}
+
+					break;
+
+				case 'map':
+
+					if ( 'map' in targetObject ) {
+
+						targetObject = targetObject.map;
+						break;
+
+					}
+
+					if ( ! targetObject.material ) {
+
+						console.error( 'THREE.PropertyBinding: Can not bind to material as node does not have a material.', this );
+						return;
+
+					}
+
+					if ( ! targetObject.material.map ) {
+
+						console.error( 'THREE.PropertyBinding: Can not bind to material.map as node.material does not have a map.', this );
+						return;
+
+					}
+
+					targetObject = targetObject.material.map;
+					break;
+
+				default:
+
+					if ( targetObject[ objectName ] === undefined ) {
+
+						console.error( 'THREE.PropertyBinding: Can not bind to objectName of node undefined.', this );
+						return;
+
+					}
+
+					targetObject = targetObject[ objectName ];
+
+			}
+
+
+			if ( objectIndex !== undefined ) {
+
+				if ( targetObject[ objectIndex ] === undefined ) {
+
+					console.error( 'THREE.PropertyBinding: Trying to bind to objectIndex of objectName, but is undefined.', this, targetObject );
+					return;
+
+				}
+
+				targetObject = targetObject[ objectIndex ];
+
+			}
+
+		}
+
+		// resolve property
+		const nodeProperty = targetObject[ propertyName ];
+
+		if ( nodeProperty === undefined ) {
+
+			const nodeName = parsedPath.nodeName;
+
+			console.error( 'THREE.PropertyBinding: Trying to update property for track: ' + nodeName +
+				'.' + propertyName + ' but it wasn\'t found.', targetObject );
+			return;
+
+		}
+
+		// determine versioning scheme
+		let versioning = this.Versioning.None;
+
+		this.targetObject = targetObject;
+
+		if ( targetObject.needsUpdate !== undefined ) { // material
+
+			versioning = this.Versioning.NeedsUpdate;
+
+		} else if ( targetObject.matrixWorldNeedsUpdate !== undefined ) { // node transform
+
+			versioning = this.Versioning.MatrixWorldNeedsUpdate;
+
+		}
+
+		// determine how the property gets bound
+		let bindingType = this.BindingType.Direct;
+
+		if ( propertyIndex !== undefined ) {
+
+			// access a sub element of the property array (only primitives are supported right now)
+
+			if ( propertyName === 'morphTargetInfluences' ) {
+
+				// potential optimization, skip this if propertyIndex is already an integer, and convert the integer string to a true integer.
+
+				// support resolving morphTarget names into indices.
+				if ( ! targetObject.geometry ) {
+
+					console.error( 'THREE.PropertyBinding: Can not bind to morphTargetInfluences because node does not have a geometry.', this );
+					return;
+
+				}
+
+				if ( ! targetObject.geometry.morphAttributes ) {
+
+					console.error( 'THREE.PropertyBinding: Can not bind to morphTargetInfluences because node does not have a geometry.morphAttributes.', this );
+					return;
+
+				}
+
+				if ( targetObject.morphTargetDictionary[ propertyIndex ] !== undefined ) {
+
+					propertyIndex = targetObject.morphTargetDictionary[ propertyIndex ];
+
+				}
+
+			}
+
+			bindingType = this.BindingType.ArrayElement;
+
+			this.resolvedProperty = nodeProperty;
+			this.propertyIndex = propertyIndex;
+
+		} else if ( nodeProperty.fromArray !== undefined && nodeProperty.toArray !== undefined ) {
+
+			// must use copy for Object3D.Euler/Quaternion
+
+			bindingType = this.BindingType.HasFromToArray;
+
+			this.resolvedProperty = nodeProperty;
+
+		} else if ( Array.isArray( nodeProperty ) ) {
+
+			bindingType = this.BindingType.EntireArray;
+
+			this.resolvedProperty = nodeProperty;
+
+		} else {
+
+			this.propertyName = propertyName;
+
+		}
+
+		// select getter / setter
+		this.getValue = this.GetterByBindingType[ bindingType ];
+		this.setValue = this.SetterByBindingTypeAndVersioning[ bindingType ][ versioning ];
+
+	}
+
+	unbind() {
+
+		this.node = null;
+
+		// back to the prototype version of getValue / setValue
+		// note: avoiding to mutate the shape of 'this' via 'delete'
+		this.getValue = this._getValue_unbound;
+		this.setValue = this._setValue_unbound;
+
+	}
+
+}
+
+PropertyBinding.Composite = Composite;
+
+PropertyBinding.prototype.BindingType = {
+	Direct: 0,
+	EntireArray: 1,
+	ArrayElement: 2,
+	HasFromToArray: 3

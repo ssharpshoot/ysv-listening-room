@@ -1,0 +1,940 @@
+}
+function wallModules(name,plane,fixed,u0,u1,v0,v1,depth,material,detail,extra=[]){
+ const margin=.05;
+ let parts=[{a:u0/1000,b:u1/1000,c:v0/1000,d:v1/1000}];
+ const normal=plane==='rear'?'z':'x',along=plane==='rear'?'x':'z';
+ const normalCenter=plane==='rear'?-fixed/1000:fixed/1000;
+ for(const item of [...equipmentBounds,...extra]){
+   const b=item.bounds.clone().expandByScalar(margin);
+   if(b.max[normal]<normalCenter-depth/2000||b.min[normal]>normalCenter+depth/2000)continue;
+   parts=parts.flatMap(r=>subtract(r,{a:b.min[along],b:b.max[along],c:b.min.y,d:b.max.y}));
+ }
+ return parts.map((r,i)=>{
+   const u=(r.a+r.b)*500,z=(r.c+r.d)*500,w=(r.b-r.a)*1000,h=(r.d-r.c)*1000;
+   const o=plane==='rear'?box(G.acoustic,`${name} ${i+1}`,u,fixed,z,w,depth,h,material,true,detail):box(G.acoustic,`${name} ${i+1}`,fixed,-u,z,depth,w,h,material,true,detail);
+   o.userData.acousticRegion=plane;o.userData.clearanceMm=50;
+   acousticPanels.push(o);return {name:o.name,bounds:new T.Box3().setFromObject(o)};
+ });
+}
+// ---------- acoustic zones: solid mesh ----------
+box(G.acoustic,'前墙宽频吸声区',0,90,1400,4550,140,2350,mats.acousticMineral,true,'产品类型建议｜100–120 mm 矿棉 / 玻璃棉，参考密度 48–60 kg/m³，外覆黑色阻燃透声布；有条件可留 50–100 mm 空气层。作用：控制前墙早期反射与边界效应。');
+for(const x of [-2240,2240])box(G.acoustic,'前角低频吸声区',x,260,1500,420,420,2000,mats.acousticBass,true,'产品类型建议｜多孔式低频陷阱，等效厚度建议 ≥200 mm；芯材可用较低密度矿棉 / 玻璃棉。作用：增加低频阻尼；最终厚度与结构结合 REW / GSonic 测量深化。');
+function sideReflectionY(sx,sy,wallX,lx=E.MLP[0],ly=E.MLP[1]){const mirrorX=2*wallX-sx;const t=(wallX-lx)/(mirrorX-lx);return ly+t*(sy-ly)}
+const frontSources=[[-1700,650],[0,650],[1700,650]];
+for(const side of [-1,1]){
+ const wallX=side*2500;
+ const refl=frontSources.map(([sx,sy])=>Math.round(sideReflectionY(sx,sy,wallX))).sort((a,b)=>a-b);
+ for(let i=0;i<refl.length;i++)box(G.acoustic,`${side<0?'左':'右'}墙第一反射 ${i+1}`,side*2472.5,refl[i],1450,55,620,1350,mats.acousticFirst,true,`产品类型建议｜60–100 mm 宽频吸声板，矿棉 / 玻璃棉芯材 + 阻燃透声面料，可留 30–50 mm 背空。中心距前墙约 ${refl[i]} mm；由当前 L/C/R 与 MLP 坐标实时镜像计算。`);
+}
+for(const side of [-1,1])for(const y of [4200,6100])box(G.acoustic,`${side<0?'左':'右'}墙混合处理`,side*2472.5,y,1480,55,1050,1450,mats.acousticSlat,true,'产品类型建议｜木质条板 / 微穿孔饰面 + 背后 50–100 mm 多孔吸声层。作用：控制反射同时保持环绕声场活性；开孔率和条缝参数按最终成品确定。');
+const diffusers=[];
+for(const x of [-1650,1650])diffusers.push(...wallModules(`${x<0?'左':'右'}后墙浅扩散区`,'rear',7980,x-325,x+325,2060,2580,80,mats.acousticDiffuser,'浅扩散模块：按后墙扬声器外包络分割，预留 50 mm 模型避让间距；具体扩散序列与有效频段按产品确认。'));
+for(const side of [-1,1])wallModules(`${side<0?'左':'右'}后墙吸声区`,'rear',7980,side<0?-2400:620,side<0?-620:2400,380,2540,80,mats.acousticRear,'100–150 mm 厚型宽频吸声结构建议；模块按低音炮、9410、GHD2、机柜与支架包络分割，留 50 mm 模型避让间距，中央设备带留空；该间距不替代设备检修/散热要求。',diffusers);
+box(G.acoustic,'地台低频辅助处理区',0,6650,105,4050,2450,150,mats.acousticBass,true,'产品类型建议｜地台内部采用 30–48 kg/m³ 多孔阻尼吸声填充。作用：辅助低频衰减；当前不定义为已调谐 Helmholtz / 膜式陷阱，最终结合 REW / GSonic 测量。');
+
+// Outline only acoustic panels, giving the functional color blocks readable depth.
+for(const panel of G.acoustic.children){
+ const edge=new T.LineSegments(new T.EdgesGeometry(panel.geometry),new T.LineBasicMaterial({color:0x233640,transparent:true,opacity:.48}));panel.add(edge);
+}
+return {acousticPanels,equipmentBounds};
+}
+
+// Extracted from the accepted V18 baseline; geometry is preserved.
+function createSpeakers(ctx) {
+const {T,E,colors,G,eng,root,mats,box,line,disc,plate,productFaceMaterials,speaker9410Geometry,make9410GrilleGeometry,ceilingTrapezoidGeometry,ceilingBaffleGeometry,addFastener}=ctx;
+// ---------- speaker models ----------
+function speakerModel(type,w,h,d,mountRear=false){
+ const g=new T.Group();const z0=mountRear?d/2000:0,front=mountRear?d/1000:d/2000;
+ let geom=new T.BoxGeometry(w/1000,h/1000,d/1000);
+ if(type==='9410')geom=speaker9410Geometry(w,h,d);
+ const body=new T.Mesh(geom,mats.speaker);body.position.z=z0;body.castShadow=true;body.receiveShadow=true;g.add(body);
+
+ if(type==='9410'){
+   const D=d/1000,H=h/1000;
+   // Upper horn opening sits in the deepest upper section.
+   const hornPocket=new T.Mesh(new T.BoxGeometry(.286,.145,.012),mats.black);
+   hornPocket.position.set(0,H*.285,z0+D*.46);hornPocket.castShadow=true;g.add(hornPocket);
+   const horn=plate(g,.255,.118,H*.285,z0+D*.468,mats.horn,0,.008);
+   // Lower black cloth grille follows the sloped front surface, not a protruding box.
+   const grille=new T.Mesh(make9410GrilleGeometry(w,h,d),mats.blackFabric);
+   grille.position.z=z0;grille.castShadow=true;grille.receiveShadow=true;g.add(grille);
+   // Subtle woofer behind grille for depth.
+   const woofer=new T.Mesh(new T.CylinderGeometry(.137,.137,.008,40),mats.cone);
+   woofer.rotation.x=Math.PI/2;woofer.position.set(0,-H*.14,z0+D*.30);g.add(woofer);
+   // Bottom logo strip integrated to the lower sloped area.
+   const logoBar=new T.Mesh(new T.BoxGeometry(.120,.036,.006),mats.black);
+   logoBar.position.set(0,-H*.43,z0+D*.18);logoBar.rotation.x=-.16;g.add(logoBar);
+   for(const xx of [-w*.38/1000,w*.38/1000])for(const yy of [H*.39,-H*.39]){
+     addFastener(g,xx,yy,z0+D*.02,.0045,mats.silver);
+   }
+   // Rear mounting plate stays visually small and close to cabinet.
+   const rearPlate=new T.Mesh(new T.BoxGeometry(.115,.245,.012),mats.metal);
+   rearPlate.position.set(0,H*.02,z0-D*.505);g.add(rearPlate);
+ }else{
+   plate(g,w*.90/1000,h*.90/1000,0,front+.002,mats.speakerFace,0,.010);
+   if(type==='3153'){
+     disc(g,.185,.018,-h*.28/1000,front+.015,mats.cone);disc(g,.065,.022,-h*.28/1000,front+.028,mats.black);
+     plate(g,.40,.235,.105,front+.017,mats.horn);plate(g,.38,.165,.385,front+.017,mats.horn);
+   }else if(type==='4645C'){
+     const inset=new T.Mesh(new T.BoxGeometry(w*.92/1000,h*.92/1000,.018),mats.speakerFace);inset.position.set(0,0,front+.010);g.add(inset);
+     disc(g,.067,.030,h*.285/1000,front+.028,mats.black);disc(g,.052,.032,h*.285/1000,front+.043,mats.horn);
+     disc(g,.228,.028,-h*.155/1000,front+.030,new T.MeshStandardMaterial({color:0x4b5054,roughness:.72,metalness:.03}));
+     disc(g,.196,.031,-h*.155/1000,front+.045,mats.cone);disc(g,.071,.034,-h*.155/1000,front+.062,mats.black);
+   }else if(type==='GHD2'){
+     for(let yy=-h*.38/1000;yy<h*.39/1000;yy+=.030)plate(g,w*.80/1000,.006,yy,front+.018,mats.cone,0,.006);
+     plate(g,.11,.025,-h*.40/1000,front+.025,mats.metal);
+   }
+ }
+
+ if(productFaceMaterials[type] && type!=='9410'){
+   const ph=(h*.90)/1000,pw=(w*.90)/1000;
+   const face=new T.Mesh(new T.PlaneGeometry(pw,ph),productFaceMaterials[type]);
+   face.position.set(0,0,front+.036);face.renderOrder=4;g.add(face);
+ }
+
+ const edgeGeom=(type==='9410')?geom:new T.BoxGeometry(w/1000,h/1000,d/1000);
+ const ed=new T.LineSegments(new T.EdgesGeometry(edgeGeom),new T.LineBasicMaterial({color:colors[type],transparent:true,opacity:.90}));
+ ed.position.z=z0;ed.userData.colorEdge=true;g.add(ed);
+ return g
+}
+const speakerRecords=[];
+function tagMeshes(group,name,detail){group.traverse(o=>{if(o.isMesh){o.userData={name,detail};o.name=name}})}
+function fixedFront(type,name,x,frontY,bottom,w,d,h,backstage=true){const g=new T.Group();g.position.copy(eng(x,frontY-d/2,bottom+h/2));g.rotation.y=Math.PI;const model=speakerModel(type,w,h,d,false);g.add(model);const detail=`${name}｜外包络 ${h} × ${w} × ${d} mm（高×宽×深）。前障板对齐 Y=${frontY.toFixed(0)} mm。`;tagMeshes(g,name,detail);(backstage?G.backstage:G.visibleGear).add(g);speakerRecords.push({name,type,g,target:E.MLP,listener:E.MLP,axisOrigin:g.position.clone(),color:colors[type],dimsLocal:[w,h,d],offsetZ:0});return g}
+function mountFromBack(type,name,pivot,target,w,d,h,listener=E.MLP,parent=G.visibleGear){const g=new T.Group();g.position.copy(eng(...pivot));const v=eng(...target).sub(g.position).normalize();g.quaternion.setFromUnitVectors(new T.Vector3(0,0,1),v);const model=speakerModel(type,w,h,d,true);g.add(model);const detail=`${name}｜外包络 ${h} × ${w} × ${d} mm。以安装背面为旋转基准，箱体全部向房间内部展开。${type==='9410'?' 外观贴图采用用户提供的 9400 系列正面图作同系列造型参考，采购型号仍为 9410。':''}`;tagMeshes(g,name,detail);parent.add(g);const origin=new T.Vector3(0,0,d/1000).applyQuaternion(g.quaternion).add(g.position);speakerRecords.push({name,type,g,target,listener,axisOrigin:origin,color:colors[type],dimsLocal:[w,h,d],offsetZ:d/2000});return g}
+
+function wallMountHardware(name,pivot,kind='side',extension=0){
+ const [x,y,z]=pivot;const wg=new T.Group();wg.position.copy(eng(x,y,z));
+ const detail=`${name} 墙装支架｜低型贴墙支架示意；设备与墙面保持小间隙，实际承重五金以 JBL 原配/深化图为准。`;
+ let plate,bridge;
+ if(kind==='rear'){
+   plate=new T.Mesh(new T.BoxGeometry(.150,.255,.010),mats.metal);plate.position.z=-.006;
+   bridge=new T.Mesh(new T.BoxGeometry(.070,.085,.030),mats.metal);bridge.position.z=.015;
+ }else{
+   plate=new T.Mesh(new T.BoxGeometry(.010,.255,.150),mats.metal);plate.position.x=(x<0?-.006:.006);
+   bridge=new T.Mesh(new T.BoxGeometry(.030+extension,.085,.070),mats.metal);bridge.position.x=(x<0?1:-1)*(.015+extension/2);
+ }
+ for(const o of [plate,bridge]){o.castShadow=true;o.receiveShadow=true;o.userData={name,detail};wg.add(o)}
+ G.visibleGear.add(wg);return wg
+}
+function mount9410(name,pivot,mode,listener=E.MLP,parent=G.visibleGear){
+ const w=410,d=279,h=559;
+ const g=new T.Group();g.position.copy(eng(...pivot));
+ let yaw=0,target=E.MLP,kind='side',note='';
+ if(mode==='sideL'){yaw=75*Math.PI/180; target=[0,pivot[1]-650,listener[2]]; kind='side'; note='侧墙安装：声轴相对侧墙法线向银幕方向偏转约15°。'}
+ if(mode==='sideR'){yaw=-75*Math.PI/180;target=[0,pivot[1]-650,listener[2]]; kind='side'; note='侧墙安装：声轴相对侧墙法线向银幕方向偏转约15°。'}
+ if(mode==='rearL'){yaw=15*Math.PI/180;target=[0,listener[1],listener[2]];kind='rear';note='后墙安装：声轴相对后墙法线向房间中心内转约15°。'}
+ if(mode==='rearR'){yaw=-15*Math.PI/180;target=[0,listener[1],listener[2]];kind='rear';note='后墙安装：声轴相对后墙法线向房间中心内转约15°。'}
+ if(mode==='wideL'||mode==='wideR'){
+   const to=eng(...E.MLP).sub(g.position).normalize();yaw=Math.atan2(to.x,to.z);target=E.MLP;kind='side';note='Front Wide 按主听位方向水平指向。';
+ }
+ g.rotation.y=yaw;
+ const model=speakerModel('9410',w,h,d,true);g.add(model);
+ const detail=`${name}｜JBL 9410，559 × 410 × 279 mm。官方外形为顶部更深、下部回收的竖向楔形箱体；墙装保持贴墙，不做俯仰斜挂。${note}`;
+ tagMeshes(g,name,detail);parent.add(g);
+ let extension=0;
+ if(mode==='wideL'||mode==='wideR'){
+   const bounds=new T.Box3().setFromObject(g);
+   // Preserve the accepted yaw and cabinet geometry; pull the bracket inward
+   // until the whole cabinet clears the side finish (inner limit X=±2400 mm).
+   extension=mode==='wideL'?Math.max(0,-2.4-bounds.min.x):Math.max(0,bounds.max.x-2.4);
+   g.position.x+=(mode==='wideL'?1:-1)*extension;
+   g.updateMatrixWorld(true);
+ }
+ wallMountHardware(name,pivot,kind,extension);
+ const origin=new T.Vector3(0,0,d/1000).applyEuler(new T.Euler(0,yaw,0)).add(g.position);
+ speakerRecords.push({name,type:'9410',g,target,listener,axisOrigin:origin,color:colors['9410'],dimsLocal:[w,h,d],offsetZ:d/2000});
+ return g
+}
+function fixedSub(name,x,y,bottom,frontDir){const g=new T.Group();g.position.copy(eng(x,y,bottom+1010/2));g.rotation.y=frontDir==='roomFront'?0:Math.PI;const model=speakerModel('4645C',674,1010,450,false);g.add(model);tagMeshes(g,name,'JBL 4645C｜1010 × 674 × 450 mm。低音炮以真实外包络定位。由于当前原始图片为斜向拍摄，已取消不准确的正面贴图，避免与实际正视外观产生偏差；后续如补充正视图可再恢复真实贴图。');(y>4000?G.visibleGear:G.backstage).add(g);speakerRecords.push({name,type:'4645C',g,target:E.SEAT,listener:E.MLP,axisOrigin:g.position.clone(),color:colors['4645C'],noAngle:true,dimsLocal:[674,1010,450],offsetZ:0});return g}
+function verticalYawGHD2(name,x,boundaryY,bottom,target,parent=G.visibleGear){
+ const w=392,d=455,h=614;
+ // 保持箱体绝对竖直，只计算水平方位；按旋转后的最外后缘求中心位置，避免穿墙
+ let centerY=boundaryY-d/2;
+ const inward=Math.atan2(Math.abs(target[0]-x),Math.abs(target[1]-centerY));
+ const yExtent=Math.abs(Math.sin(inward))*w/2+Math.abs(Math.cos(inward))*d/2;
+ centerY=boundaryY-yExtent;
+ const g=new T.Group();g.position.copy(eng(x,centerY,bottom+h/2));
+ const tw=eng(...target);const dx=tw.x-g.position.x,dz=tw.z-g.position.z;
+ g.rotation.y=Math.atan2(dx,dz); // 仅绕竖直轴旋转
+ const model=speakerModel('GHD2',w,h,d,false);g.add(model);
+ const yawDeg=Math.atan2(Math.abs(target[0]-x),Math.abs(target[1]-centerY))*180/Math.PI;
+ const detail=`${name}｜JBL GHD2 竖向安装，614 × 392 × 455 mm；箱体不做俯仰倾斜，仅水平内转约 ${yawDeg.toFixed(1)}°。`;
+ tagMeshes(g,name,detail);parent.add(g);
+ const origin=new T.Vector3(0,0,d/2000).applyQuaternion(g.quaternion).add(g.position);
+ speakerRecords.push({name,type:'GHD2',g,target,listener:E.SEAT,axisOrigin:origin,color:colors['GHD2'],dimsLocal:[w,h,d],offsetZ:0});
+ return g
+}
+// LCR corrected: front face Y=650mm, not center Y=650
+fixedFront('3153','R / JBL 3153',-1700,650,200,560,455,1218,true);fixedFront('3153','C / JBL 3153',0,650,200,560,455,1218,true);fixedFront('3153','L / JBL 3153',1700,650,200,560,455,1218,true);
+// front subs corrected to ±850 and baffle face Y=650
+fixedSub('SW2 前右 / JBL 4645C',-850,650-450/2,200,'roomBack');fixedSub('SW1 前左 / JBL 4645C',850,650-450/2,200,'roomBack');
+// 前墙 KTV：改为严格竖向安装，不做斜装；与主音箱同样隐藏在透声幕后
+const ghdFR=verticalYawGHD2('KTV FR / JBL GHD2',-1700,650,1520,[-420,5350,1240],G.backstage);const ghdFL=verticalYawGHD2('KTV FL / JBL GHD2',1700,650,1520,[420,5350,1240],G.backstage);
+// 9410 wall mounts: pivot on room-side wall face, cabinet extends inward
+mount9410('Front Wide R / JBL 9410',[-2440,3100,1520],'wideL',E.MLP);
+mount9410('Front Wide L / JBL 9410',[2440,3100,1520],'wideR',E.MLP);
+mount9410('Side Surround R / JBL 9410',[-2440,5150,1580],'sideL',E.MLP);
+mount9410('Side Surround L / JBL 9410',[2440,5150,1580],'sideR',E.MLP);
+mount9410('Rear Surround R / JBL 9410',[-1400,7940,1720],'rearL',E.MLP);
+mount9410('Rear Surround L / JBL 9410',[1400,7940,1720],'rearR',E.MLP);
+// rear subs: pads remain within wall, cabinet raised by pad thickness, back face at Y=8000
+for(const x of [-920,920]){box(G.visibleGear,`${x<0?'SW4':'SW3'}隔振垫`,x,7775,295,710,450,30,mats.rubber,true,'高承载隔振垫；后沿不越过结构后墙。');fixedSub(`${x<0?'SW4 后右':'SW3 后左'} / JBL 4645C`,x,7775,310,'roomFront')}
+// 后墙 KTV：保持竖向安装，仅做水平内转，不做俯仰倾斜
+const ghdRR=verticalYawGHD2('KTV RR / JBL GHD2',-2060,8000,1493,[-800,6200,1360],G.visibleGear);const ghdRL=verticalYawGHD2('KTV RL / JBL GHD2',2060,8000,1493,[800,6200,1360],G.visibleGear);
+// wall mounting brackets keep angled cabinets inside the room while remaining wall-mounted
+for(const [x,y,z,wx,wy] of [[-2300,3100,1520,-2460,3100],[2300,3100,1520,2460,3100],[-2300,5150,1580,-2460,5150],[2300,5150,1580,2460,5150],[-1400,7820,1720,-1400,7960],[1400,7820,1720,1400,7960]]){line(G.engineering,eng(wx,wy,z),eng(x,y,z),0x7f8589,.95)}
+line(G.engineering,eng(-2060,7960,1800),ghdRL.position.clone(),0x7f8589,.95);line(G.engineering,eng(2060,7960,1800),ghdRR.position.clone(),0x7f8589,.95);
+
+// ---------- 8320 ceiling mount: real footprint and 224mm drop from flat gray ceiling ----------
+function top8320(name,x,y,target,listener){
+ const g=new T.Group();g.position.copy(eng(x,y,2790));
+ // 回退到 V15 已确认版本：窄端朝向听音位（MLP），宽/深端朝外；因此将局部 -Z 对准目标而不是 +Z
+ const p=eng(target[0],target[1],2790).sub(g.position);g.rotation.y=Math.atan2(p.x,p.z)+Math.PI;
+ const detail='JBL 8320｜按官方尺寸图楔形箱体深化：343 mm宽、406 mm长、224 mm最大下垂，约84 mm背部安装深度，约20°前障板。顶面安装面保持水平，窄端 / 高音方向朝向主听位（MLP），宽端朝房间外侧。';
+ const geom=ceilingTrapezoidGeometry(343,224,406,.80);
+ const body=new T.Mesh(geom,mats.speaker);body.castShadow=true;body.receiveShadow=true;body.userData={name,detail};g.add(body);
+
+ const faceMat=productFaceMaterials['8320']||mats.speakerFace;
+ const face=new T.Mesh(ceilingBaffleGeometry(343,406,224,84),faceMat);face.position.y=-.003;face.renderOrder=5;face.userData={name,detail};g.add(face);
+
+ const plateTop=new T.Mesh(new T.BoxGeometry(.235,.012,.185),mats.metal);plateTop.position.set(0,.008,-.055);plateTop.userData={name,detail};g.add(plateTop);
+ const bridge=new T.Mesh(new T.BoxGeometry(.115,.040,.135),mats.rack);bridge.position.set(0,-.015,-.055);bridge.userData={name,detail};g.add(bridge);
+ for(const xx of [-.095,.095]){
+   const ear=new T.Mesh(new T.BoxGeometry(.025,.065,.080),mats.metal);ear.position.set(xx,-.032,-.055);ear.userData={name,detail};g.add(ear);
+ }
+ for(const xx of [-.078,.078])for(const zz of [-.055,.015])addFastener(g,xx,.016,zz,.006,mats.silver);
+
+ const ed=new T.LineSegments(new T.EdgesGeometry(geom),new T.LineBasicMaterial({color:colors[8320],transparent:true,opacity:.92}));ed.userData.colorEdge=true;g.add(ed);
+ G.visibleGear.add(g);
+ const origin=new T.Vector3(0,-.154,0).applyQuaternion(g.quaternion).add(g.position);
+ speakerRecords.push({name,type:'8320',g,target,listener,axisOrigin:origin,color:colors[8320],dimsLocal:[343,224,406],offsetZ:0});
+ return g
+}
+top8320('Top Front R / JBL 8320',-1100,3300,E.MLP,E.MLP);top8320('Top Front L / JBL 8320',1100,3300,E.MLP,E.MLP);top8320('Top Middle R / JBL 8320',-1100,4920,E.MLP,E.MLP);top8320('Top Middle L / JBL 8320',1100,4920,E.MLP,E.MLP);top8320('Top Rear R / JBL 8320',-1100,6420,E.MLP,E.MLP);top8320('Top Rear L / JBL 8320',1100,6420,E.MLP,E.MLP);
+
+return  {speakerRecords,ghdFL,ghdFR,ghdRL,ghdRR};
+}
+
+/** Upright cinema recliners. Plan sizes and row origins are locked; upholstery heights are visual approximations. */
+function createSeating(ctx) {
+ const {T,G,eng,mats}=ctx;
+ const leather=mats.seat.clone();leather.color.setHex(0xe4b3c0);leather.roughness=.64;leather.bumpScale=.0013;leather.sheen=.46;leather.emissive.setHex(0x6a2436);leather.emissiveIntensity=.18;
+ const backLeather=mats.seat2.clone();backLeather.color.setHex(0xe8bbc5);backLeather.roughness=.69;backLeather.bumpScale=.0012;backLeather.emissive.setHex(0x6a2436);backLeather.emissiveIntensity=.16;
+ const graphite=new T.MeshStandardMaterial({color:0x464b53,roughness:.68,metalness:.13});
+ const cupRim=new T.MeshStandardMaterial({color:0x6d747c,roughness:.36,metalness:.65});
+ const cupInside=new T.MeshStandardMaterial({color:0x171c23,roughness:.82});
+
+ function roundedBox(w,h,d,r){
+   const g=new T.BoxGeometry(1,1,1,8,8,8),p=g.attributes.position,n=g.attributes.normal;
+   const inner=[w/2-r,h/2-r,d/2-r];
+   const sample=(t,half)=>{const a=half-r;return [-half,-a-r*.67,-a-r*.33,-a,0,a,a+r*.33,a+r*.67,half][Math.round((t+.5)*8)]};
+   const half=[w/2,h/2,d/2];
+   for(let i=0;i<p.count;i++){
+     const v=new T.Vector3(sample(p.getX(i),half[0]),sample(p.getY(i),half[1]),sample(p.getZ(i),half[2]));
+     const q=new T.Vector3(T.MathUtils.clamp(v.x,-inner[0],inner[0]),T.MathUtils.clamp(v.y,-inner[1],inner[1]),T.MathUtils.clamp(v.z,-inner[2],inner[2]));
+     const normal=v.clone().sub(q).normalize();v.copy(q).addScaledVector(normal,r);
+     p.setXYZ(i,v.x,v.y,v.z);n.setXYZ(i,normal.x,normal.y,normal.z);
+   }
+   p.needsUpdate=true;n.needsUpdate=true;g.computeBoundingBox();g.computeBoundingSphere();return g;
+ }
+ function row(name,cx,cy,width,depth,count,baseZ){
+   const W=width/1000,D=depth/1000,g=new T.Group();g.position.copy(eng(cx,cy,baseZ));
+   const detail=`${name}｜锁定名义平面外包络 ${width} × ${depth} mm；直立收拢状态。独立坐垫、分段靠背、腰靠、头枕、共享扶手、杯托及收拢脚踏按原酒红沙发照片作视觉近似；高度、五金和全躺状态未取得实物尺寸。`;
+   g.name=name;g.userData={name,detail,row:true,seats:count,nominal:{width,depth,center:[cx,cy,baseZ]},visualApproximation:true};
+   function part(label,w,h,d,x,y,z,material,r=.026,tilt=0){
+     const mesh=new T.Mesh(roundedBox(w,h,d,Math.min(r,w*.22,h*.22,d*.22)),material);
+     mesh.name=name+' / '+label;mesh.position.set(x,y,z);mesh.rotation.x=tilt;mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={name,detail,part:label};g.add(mesh);return mesh;
+   }
+   const outerArm=.144,innerArm=.118,seatW=(W-2*outerArm-(count-1)*innerArm)/count;
+   let cursor=-W/2;
+   const arms=[];
+   for(let i=0;i<=count;i++){
+     const aw=i===0||i===count?outerArm:innerArm;
+     const x=cursor+aw/2;arms.push({x,w:aw});cursor+=aw;
+     if(i<count){
+       const sx=cursor+seatW/2;cursor+=seatW;
+       part('独立底座 '+(i+1),seatW-.012,.085,.535,sx,.063,.007,graphite,.016);
+       part('坐垫前围 '+(i+1),seatW-.014,.205,.445,sx,.220,.054,leather,.035);
+       part('软包坐垫 '+(i+1),seatW-.022,.125,.400,sx,.381,.020,leather,.042,-.020);
+       part('收拢脚踏 '+(i+1),seatW-.045,.232,.088,sx,.232,D/2-.044,leather,.025);
+       part('后背壳 '+(i+1),seatW-.018,.580,.086,sx,.629,-.247,backLeather,.030,-.025);
+       part('下段靠背 '+(i+1),seatW-.032,.290,.112,sx,.563,-.163,backLeather,.032,-.045);
+       part('腰靠 '+(i+1),seatW-.094,.128,.109,sx,.471,-.105,leather,.028,-.04);
+       part('上段靠背 '+(i+1),seatW-.048,.325,.112,sx,.829,-.180,backLeather,.035,-.040);
+       part('头枕 '+(i+1),seatW-.105,.135,.123,sx,.951,-.164,leather,.028,-.045);
+       for(const fx of [sx-seatW*.30,sx+seatW*.30])part('底脚',.047,.031,.066,fx,.016,.193,graphite,.008);
+     }
+   }
+   for(const {x,w} of arms){
+     part('共用扶手',w,.545,D,x,.288,0,backLeather,.031);
+     part('扶手软包顶',w-.016,.083,.541,x,.582,-.007,leather,.025);
+     const rim=new T.Mesh(new T.CylinderGeometry(.036,.036,.013,32),cupRim);rim.position.set(x,.628,.131);rim.userData={name,detail,part:'杯托'};g.add(rim);
+     const well=new T.Mesh(new T.CylinderGeometry(.029,.027,.013,32),cupInside);well.position.set(x,.632,.131);well.userData={name,detail,part:'杯托内衬'};g.add(well);
+   }
+   G.visibleGear.add(g);return g;
+ }
+ const sofaRow1=row('第一排三人位',0,5020,2400,600,3,0);
+ const sofaRow2=row('第二排四人位',0,6470,3200,600,4,280);
+ return {sofaRow1,sofaRow2};
+}
+
+// Extracted from the accepted V18 baseline; geometry is preserved.
+function createDimensions(ctx) {
+const {T,$,G,root,eng,line,speakerRecords}=ctx;
+// ---------- helper lines / dimensions / angles ----------
+const axisLines=[];for(const r of speakerRecords){if(r.type==='4645C')continue;const target=eng(...r.target);axisLines.push(line(G.axis,r.axisOrigin,target,r.color,.78))}
+// projector axis
+line(G.axis,eng(0,7560-479/2-15,2215),eng(0,820,1460),0x6baac7,.72);
+
+const dimLabels=[];
+function dim(a,b,text,pos){line(G.dims,eng(...a),eng(...b),0xb79b70,.9);dimLabels.push({text,pos:eng(...pos)})}
+dim([-2500,120,80],[2500,120,80],'房宽 5.00 m',[0,120,150]);dim([-2380,0,80],[-2380,8000,80],'房深 8.00 m',[-2380,4000,180]);dim([2380,7880,0],[2380,7880,2800],'结构高 2.80 m',[2380,7880,1450]);dim([-2250,5320,0],[-2250,5320,280],'地台 280 mm',[-2180,5320,180]);dim([-2052.5,820,2640],[2052.5,820,2640],'幕框 4105 mm',[0,820,2700]);dim([0,0,1050],[0,4750,1050],'MLP 距前墙 4.75 m',[150,2375,1120]);
+// 设备与家具尺寸
+dim([-300,7160,120],[300,7160,120],'机柜宽 600 mm',[0,7160,190]);dim([430,7160,120],[430,7960,120],'机柜深 800 mm',[430,7560,190]);dim([430,7960,310],[430,7960,2110],'机柜高 1.80 m',[430,7960,1240]);
+dim([-1200,5020,120],[1200,5020,120],'一排沙发宽 2400 mm',[0,5020,190]);dim([1320,4720,120],[1320,5320,120],'一排沙发深 600 mm',[1320,5020,190]);
+dim([-1600,6470,400],[1600,6470,400],'二排沙发宽 3200 mm',[0,6470,470]);dim([1720,6170,400],[1720,6770,400],'二排沙发深 600 mm',[1720,6470,470]);
+
+
+
+
+
+dimLabels.push({text:'第一排沙发｜2400 × 600 mm',pos:eng(0,5020,1380)});
+dimLabels.push({text:'第二排沙发｜3200 × 600 mm',pos:eng(0,6470,1680)});
+dimLabels.push({text:'机柜｜1800 × 600 × 800 mm',pos:eng(0,7560,2320)});
+
+const selectedDimLabels=[];let selectedSpeakerRecord=null,selectedHelper=null;
+function clearSelectedDimensions(){while(G.selectedDims.children.length)G.selectedDims.remove(G.selectedDims.children[0]);selectedDimLabels.length=0;if(selectedHelper){root.remove(selectedHelper);selectedHelper=null}}
+function localToWorldDim(r,x,y,z){const v=new T.Vector3(x,y,z+(r.offsetZ||0));return r.g.localToWorld(v)}
+function drawSelectedSpeakerDimensions(r){
+ clearSelectedDimensions();if(!r||!r.dimsLocal)return;
+ const [wmm,hmm,dmm]=r.dimsLocal;const w=wmm/1000,h=hmm/1000,d=dmm/1000;const col=0xd33b52;
+ function dl(a,b,text,p){line(G.selectedDims,localToWorldDim(r,...a),localToWorldDim(r,...b),col,1);selectedDimLabels.push({text,pos:localToWorldDim(r,...p),kind:'dim'})}
+ if(r.type==='8320'){
+   // installed orientation: X=343 width, local Z=406 cabinet length, vertical drop=224 max
+   dl([-.343/2,-.26,-.203],[.343/2,-.26,-.203],'宽 343 mm',[0,-.31,-.203]);
+   dl([-.25,-.02,-.203],[-.25,-.02,.203],'箱体长 406 mm',[-.30,-.02,0]);
+   dl([.25,0,.203],[.25,-.224,.203],'最大下垂 224 mm',[.31,-.112,.203]);
+ }else{
+   dl([-w/2,-h/2-.10,-d/2],[w/2,-h/2-.10,-d/2],`宽 ${wmm} mm`,[0,-h/2-.16,-d/2]);
+   dl([-w/2-.10,-h/2,-d/2],[-w/2-.10,h/2,-d/2],`高 ${hmm} mm`,[-w/2-.17,0,-d/2]);
+   dl([w/2+.10,-h/2,-d/2],[w/2+.10,-h/2,d/2],`深 ${dmm} mm`,[w/2+.18,-h/2,0]);
+ }
+ if(r.type!=='9410'&&r.type!=='8320'){selectedHelper=new T.BoxHelper(r.g,0xd33b52);selectedHelper.material.depthTest=false;selectedHelper.renderOrder=30;root.add(selectedHelper)}selectedDimActive=true;G.selectedDims.visible=true;rebuildLabels();
+}
+const baseLabels=[{text:'180英寸透声幕',pos:eng(0,821,2680),kind:'base'},{text:'第一排 · 3座',pos:eng(0,5020,1230),kind:'base'},{text:'第二排 · 4座',pos:eng(0,6470,1510),kind:'base'},{text:'后墙机柜 / 投影',pos:eng(0,7560,2440),kind:'base'}];
+const angleLabels=[];
+function azEl(listener,speaker){const dx=speaker[0]-listener[0],dy=speaker[1]-listener[1],dz=speaker[2]-listener[2];return {az:Math.atan2(dx,-dy)*180/Math.PI,el:Math.atan2(dz,Math.hypot(dx,dy))*180/Math.PI}}
+for(const r of speakerRecords){if(r.noAngle||r.type==='4645C')continue;const p=new T.Vector3();r.g.getWorldPosition(p);const epos=[p.x*1000,-p.z*1000,p.y*1000];const a=azEl(r.listener,epos);angleLabels.push({text:`方位角 ${a.az>=0?'+':''}${a.az.toFixed(1)}°`,pos:p.clone().add(new T.Vector3(0,.22,0)),kind:'az'});angleLabels.push({text:`仰角 ${a.el>=0?'+':''}${a.el.toFixed(1)}°`,pos:p.clone().add(new T.Vector3(0,.10,0)),kind:'el'})}
+let labelState={base:true,az:false,el:false,dim:false};let selectedDimActive=false;
+function rebuildLabels(){const host=$('labels');host.innerHTML='';const all=[];if(labelState.base)all.push(...baseLabels);if(labelState.az)all.push(...angleLabels.filter(x=>x.kind==='az'));if(labelState.el)all.push(...angleLabels.filter(x=>x.kind==='el'));if(labelState.dim)all.push(...dimLabels.map(x=>({...x,kind:'dim'})));if(selectedDimActive)all.push(...selectedDimLabels);for(const item of all){const d=document.createElement('div');d.className='scene-label '+(item.kind||'');d.textContent=item.text;d._pos=item.pos;host.append(d)}}rebuildLabels();
+
+return  {labelState,rebuildLabels,clearSelectedDimensions,drawSelectedSpeakerDimensions,get selectedSpeakerRecord(){return selectedSpeakerRecord},set selectedSpeakerRecord(v){selectedSpeakerRecord=v},get selectedDimActive(){return selectedDimActive},set selectedDimActive(v){selectedDimActive=v}};
+}
+
+// Extracted from the accepted V18 baseline; geometry is preserved.
+function validateGeometry(ctx) {
+const {T,$,G,E,speakerRecords,rackBase,rack,proj,sofaRow1,sofaRow2,acousticPanels,equipmentBounds}=ctx;
+// ---------- OBB collision helpers ----------
+function makeOBB(obj,dimsLocal,offsetZ=0){
+ obj.updateMatrixWorld(true);
+ const c=new T.Vector3(0,0,offsetZ).applyMatrix4(obj.matrixWorld);
+ const q=new T.Quaternion();obj.getWorldQuaternion(q);
+ const axes=[new T.Vector3(1,0,0),new T.Vector3(0,1,0),new T.Vector3(0,0,1)].map(a=>a.applyQuaternion(q).normalize());
+ return {c,u:axes,e:[dimsLocal[0]/2000,dimsLocal[1]/2000,dimsLocal[2]/2000]};
+}
+function obbHit(A,B){
+ const EPS=1e-7,R=[[],[],[]],AR=[[],[],[]];
+ for(let i=0;i<3;i++)for(let j=0;j<3;j++){R[i][j]=A.u[i].dot(B.u[j]);AR[i][j]=Math.abs(R[i][j])+EPS}
+ const tv=B.c.clone().sub(A.c),t=A.u.map(a=>tv.dot(a));
+ for(let i=0;i<3;i++){const ra=A.e[i],rb=B.e[0]*AR[i][0]+B.e[1]*AR[i][1]+B.e[2]*AR[i][2];if(Math.abs(t[i])>ra+rb)return false}
+ for(let j=0;j<3;j++){const ra=A.e[0]*AR[0][j]+A.e[1]*AR[1][j]+A.e[2]*AR[2][j],rb=B.e[j];const val=Math.abs(t[0]*R[0][j]+t[1]*R[1][j]+t[2]*R[2][j]);if(val>ra+rb)return false}
+ for(let i=0;i<3;i++)for(let j=0;j<3;j++){
+   const i1=(i+1)%3,i2=(i+2)%3,j1=(j+1)%3,j2=(j+2)%3;
+   const ra=A.e[i1]*AR[i2][j]+A.e[i2]*AR[i1][j];
+   const rb=B.e[j1]*AR[i][j2]+B.e[j2]*AR[i][j1];
+   const val=Math.abs(t[i2]*R[i1][j]-t[i1]*R[i2][j]);
+   if(val>ra+rb)return false;
+ }
+ return true
+}
+function rec(name){return speakerRecords.find(r=>r.name.includes(name))}
+function recordOBB(r){return makeOBB(r.g,r.dimsLocal,r.offsetZ||0)}
+
+// ---------- geometry validation ----------
+const issues=[];const checks=[];
+function addCheck(ok,label,detail){checks.push({ok,label,detail});if(!ok)issues.push(label+': '+detail)}
+function boxInside(obj,label,tol=.025){obj.updateMatrixWorld(true);const b=new T.Box3().setFromObject(obj);const ok=b.min.x>=-2.5-tol&&b.max.x<=2.5+tol&&b.min.y>=-tol&&b.max.y<=2.8+tol&&b.min.z>=-8-tol&&b.max.z<=tol;addCheck(ok,label,`包络 x[${b.min.x.toFixed(3)},${b.max.x.toFixed(3)}] y[${b.min.y.toFixed(3)},${b.max.y.toFixed(3)}] z[${b.min.z.toFixed(3)},${b.max.z.toFixed(3)}] m`)}
+for(const r of speakerRecords)boxInside(r.type==='8320'?r.g.children[0]:r.g,r.name, .001);
+boxInside(rack,'37U机柜');boxInside(proj,'JVC投影机');
+addCheck(Math.abs((5020+600/2)-5320)<1,'第一排靠背贴地台','第一排名义后沿应为 Y=5320 mm');
+addCheck(Math.abs((7775+450/2)-8000)<1,'后炮贴后墙','后炮后沿应为 Y=8000 mm');
+addCheck(2640<=2800,'180英寸幕框高度','幕框顶边 2640 mm，距结构顶 160 mm');
+
+addCheck(2310<2800,'投影机顶面净空','当前投影机顶面约 2310 mm，距结构顶约 490 mm');
+// 机柜基座覆盖与关键 OBB 碰撞
+const rackBB=new T.Box3().setFromObject(rack),baseBB=new T.Box3().setFromObject(rackBase);
+addCheck(baseBB.min.x<=rackBB.min.x+1e-6&&baseBB.max.x>=rackBB.max.x-1e-6&&baseBB.min.z<=rackBB.min.z+1e-6&&baseBB.max.z>=rackBB.max.z-1e-6,'机柜基座覆盖','720 × 880 mm 基座应完整承托 600 × 800 mm 机柜平面');
+const rackObb=makeOBB(rack,[600,1800,800],0);
+for(const [label,a,b] of [
+ ['Rear 9410 L ↔ SW3',rec('Rear Surround L'),rec('SW3 后左')],
+ ['Rear 9410 R ↔ SW4',rec('Rear Surround R'),rec('SW4 后右')],
+ ['Rear GHD2 L ↔ Rear 9410 L',rec('KTV RL'),rec('Rear Surround L')],
+ ['Rear GHD2 R ↔ Rear 9410 R',rec('KTV RR'),rec('Rear Surround R')],
+ ['Front GHD2 L ↔ L/3153',rec('KTV FL'),rec('L / JBL 3153')],
+ ['Front GHD2 R ↔ R/3153',rec('KTV FR'),rec('R / JBL 3153')]
+])if(a&&b)addCheck(!obbHit(recordOBB(a),recordOBB(b)),'OBB '+label,'方向包围盒不应发生实体重叠');
+for(const s of [rec('SW3 后左'),rec('SW4 后右')])if(s)addCheck(!obbHit(rackObb,recordOBB(s)),'OBB 机柜 ↔ '+s.name,'机柜与后低音炮不得实体重叠');
+const row2Obb=makeOBB(sofaRow2,[3200,1020,600],0);
+addCheck(!obbHit(row2Obb,rackObb),'OBB 第二排沙发 ↔ 机柜','当前直立状态不得与机柜实体重叠；全躺仍需实际座椅尺寸复核');
+for(const r of speakerRecords.filter(r=>r.type==='8320')){const b=new T.Box3().setFromObject(r.g.children[0]),assembly=new T.Box3().setFromObject(r.g);addCheck(b.max.y<=2.8001,'8320 箱体顶面净空 '+r.name,`箱体顶 ${(b.max.y*1000).toFixed(0)} mm；安装件最高 ${(assembly.max.y*1000).toFixed(0)} mm，用户确认允许进入顶面结构`)}
+const screenSize=new T.Box3().setFromObject(G.screen).getSize(new T.Vector3());
+addCheck(Math.abs(screenSize.x-4.105)<1e-6&&Math.abs(screenSize.y-2.360)<1e-6&&Math.abs(screenSize.z-.040)<1e-6,'幕布完整外包络','包含画面及四边框，总尺寸必须为 4105 × 2360 × 40 mm');
+for(const panel of acousticPanels){
+ const b=new T.Box3().setFromObject(panel);
+ const hits=equipmentBounds.filter(e=>b.intersectsBox(e.bounds.clone().expandByScalar(.0499)));
+ addCheck(hits.length===0,'后墙模块避让 '+panel.name,'按设备、箱体和支架完整包络预留 50 mm；'+(hits.length?hits.map(h=>h.name).join('、'):'无实体交叠'));
+}
+
+const bad=issues.length;$('geometryText').innerHTML=`自动几何检查：<b style="color:${bad?'#e16e6e':'#83c7a3'}">${bad?bad+' 项提醒':'通过'}</b><br>${checks.filter(x=>!x.ok).map(x=>'• '+x.label+' — '+x.detail).join('<br>')||'房间边界、关键 OBB 碰撞、幕框高度、后炮贴墙、机柜基础、第一排与地台关系均满足当前已知几何约束。'}<br><span style="color:#99a9b8">注：OBB 检查针对当前已知箱体外包络；座椅全躺、实际支架、墙面完成层与投影散热仍需实物资料复核。</span>`;$('collisionAlert').classList.toggle('show',bad>0);$('collisionAlert').textContent=bad?`发现 ${bad} 项几何提醒，请在工程页查看。`:'当前已知几何边界未发现硬碰撞。';
+
+return  {checks,issues};
+}
+
+// Extracted from the accepted V18 baseline; geometry is preserved.
+function createUI(ctx) {
+const {T,$,parseAssets,canvas,scene,camera,renderer,eng,G,root,mats,fabricTex,carpetTex,floor,ceiling,leftWall,rightWall,rearWall,frontShellWall,wallShellOriginal,wallXrayEdges,screen,baffleWall,speakerRecords,D}=ctx;
+const {labelState,rebuildLabels,clearSelectedDimensions,drawSelectedSpeakerDimensions}=D;
+function toast(text){const el=$("toast");el.textContent=text;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),1600)}
+// ---------- modes / UI ----------
+let mode='client',backstageManual=false,lightBg=true,finishEnabled=true,currentView='overview';
+const wallXray=true;
+
+function applyBackgroundTheme(show){
+  lightBg=show;
+  scene.background=new T.Color(show?0xf5f6f8:0x090d12);
+  scene.fog=new T.Fog(show?0xf0f2f4:0x090d12,show?15:13,show?34:28);
+  document.body.classList.toggle('lightbg',show);
+  $('bgToggle').checked=show;
+  $('bgBtn').classList.toggle('active',show);
+  $('bgBtn').textContent=show?'白色底图：开':'白色底图：关';
+}
+function applyFinish(show){
+  finishEnabled=show;
+  G.decor.visible=show;
+  $('finishToggle').checked=show;
+  $('finishBtn').classList.toggle('active',show);
+  $('finishBtn').textContent=show?'装修完成面：开':'装修完成面：关';
+
+  // Finished mode = dark cinema backing + fabric/metal decorative overlay.
+  // Raw mode = neutral construction shell, making the difference immediately visible.
+  const shellColor=show?0x24292f:0x92938f;
+  for(const m of [leftWall,rightWall,rearWall,frontShellWall]){
+    m.material.color.setHex(shellColor);
+    m.material.map=show?fabricTex:null;
+    m.material.roughness=show?.98:.96;
+    m.material.needsUpdate=true;
+  }
+  ceiling.material.color.setHex(show?0x24292f:0x777b80);
+  ceiling.material.map=null;ceiling.material.needsUpdate=true;
+  if(show){
+    floor.material.color.setHex(0x202329);floor.material.map=carpetTex;
+  }else{
+    floor.material.color.setHex(0x8b8982);floor.material.map=null;
+  }
+  floor.material.needsUpdate=true;
+  // Re-apply xray because xray opacity depends on finish state.
+  applyWallXray();
+}
+function applyWallXray(){
+  const show=true;
+  floor.material.transparent=show;
+  floor.material.opacity=show?.42:1;
+  floor.material.depthWrite=!show;
+  floor.material.needsUpdate=true;
+  // 前结构墙只在透视状态出现，用于表达完整 5×8×2.8 m 结构边界
+  frontShellWall.visible=show;
+  wallXrayEdges.visible=show;
+
+  wallShellOriginal.forEach(({mesh,opacity,transparent,depthWrite})=>{
+    const isCeiling=mesh===ceiling;
+    mesh.material.transparent=show?true:transparent;
+    mesh.material.opacity=show?(isCeiling?.055:.115):opacity;
+    mesh.material.depthWrite=show?false:depthWrite;
+    mesh.material.needsUpdate=true;
+    // 透视模式时顶部保持可见但极低透明度；关闭透视后由视角逻辑决定顶面显示
+    if(mesh===ceiling && show) mesh.visible=true;
+  });
+
+  // 装饰完成面始终位于声学芯材的房间侧。
+  // 客户/工程模式保持完成面清晰；声学布局模式将驼色布面半透明，以便看到其后的声学材料层。
+  G.decor.visible=finishEnabled;
+  G.decor.traverse(o=>{if(o.isMesh&&o.material){
+    if(o.userData._finishBaseOpacity===undefined)o.userData._finishBaseOpacity=(o.userData.baseOpacity!=null?o.userData.baseOpacity:(o.material.opacity!=null?o.material.opacity:1));
+    const isGold=(o.name&&o.name.includes('金色金属腰线'));
+    const hideGold=isGold && mode!=='client';
+    o.visible=!hideGold;
+    const targetOpacity=!finishEnabled?0:(mode==='acoustic'?.18:(isGold?.98:.74));
+    o.material.transparent=true;
+    o.material.opacity=hideGold?0:targetOpacity;
+    o.material.depthWrite=mode!=='acoustic';
+    o.material.needsUpdate=true;
+  }});
+}
+function colorEdges(show){root.traverse(o=>{if(o.userData&&o.userData.colorEdge)o.visible=show})}
+function resetHelpers(){labelState.az=labelState.el=labelState.dim=false;D.selectedDimActive=false;D.selectedSpeakerRecord=null;clearSelectedDimensions();$('axesToggle').checked=$('azToggle').checked=$('elToggle').checked=$('dimsToggle').checked=false;G.axis.visible=G.dims.visible=G.selectedDims.visible=false;['axesBtn','azBtn','elBtn','dimsBtn'].forEach(id=>$(id).classList.remove('active'));rebuildLabels()}
+function applyBackstage(show){G.backstage.visible=show;$('backstageToggle').checked=show;$('backstageBtn').classList.toggle('active',show);G.screen.visible=!show;if(typeof baffleWall!=='undefined')baffleWall.visible=!show;mats.screen.opacity=show?.02:1;mats.screen.depthWrite=!show;mats.screen.emissiveIntensity=show?.05:.26;screen.material.needsUpdate=true}
+function setMode(v){mode=v;document.body.classList.remove('mode-client','mode-acoustic','mode-engineer');document.body.classList.add('mode-'+v);document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===v));resetHelpers();$('legend').hidden=true;$('legendBtn').classList.remove('active');if(v==='client'){G.acoustic.visible=false;G.engineering.visible=false;colorEdges(false);applyBackstage(backstageManual)}else if(v==='acoustic'){G.acoustic.visible=true;G.engineering.visible=false;colorEdges(false);applyBackstage(true);document.querySelector('[data-tab=acoustics]').click()}else{G.acoustic.visible=false;G.engineering.visible=true;colorEdges(true);applyBackstage(true);document.querySelector('[data-tab=engineering]').click()}applyWallXray()}
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+function toggleCheck(id,fn){$(id).onchange=()=>fn($(id).checked)}
+toggleCheck('finishToggle',v=>applyFinish(v));toggleCheck('bgToggle',v=>applyBackgroundTheme(v));toggleCheck('labelsToggle',v=>{labelState.base=v;rebuildLabels()});toggleCheck('axesToggle',v=>{G.axis.visible=v;$('axesBtn').classList.toggle('active',v)});toggleCheck('azToggle',v=>{labelState.az=v;$('azBtn').classList.toggle('active',v);rebuildLabels()});toggleCheck('elToggle',v=>{labelState.el=v;$('elBtn').classList.toggle('active',v);rebuildLabels()});toggleCheck('dimsToggle',v=>{G.dims.visible=v;labelState.dim=v;$('dimsBtn').classList.toggle('active',v);rebuildLabels()});toggleCheck('backstageToggle',v=>{backstageManual=v;applyBackstage(v);if(v)setView('backstage')});
+$('finishBtn').onclick=()=>{$('finishToggle').checked=!$('finishToggle').checked;$('finishToggle').dispatchEvent(new Event('change'))};$('bgBtn').onclick=()=>{$('bgToggle').checked=!$('bgToggle').checked;$('bgToggle').dispatchEvent(new Event('change'))};$('axesBtn').onclick=()=>{$('axesToggle').checked=!$('axesToggle').checked;$('axesToggle').dispatchEvent(new Event('change'))};$('azBtn').onclick=()=>{$('azToggle').checked=!$('azToggle').checked;$('azToggle').dispatchEvent(new Event('change'))};$('elBtn').onclick=()=>{$('elToggle').checked=!$('elToggle').checked;$('elToggle').dispatchEvent(new Event('change'))};$('dimsBtn').onclick=()=>{$('dimsToggle').checked=!$('dimsToggle').checked;$('dimsToggle').dispatchEvent(new Event('change'))};$('backstageBtn').onclick=()=>{$('backstageToggle').checked=!$('backstageToggle').checked;$('backstageToggle').dispatchEvent(new Event('change'))};$('legendBtn').onclick=()=>{$('legend').hidden=!$('legend').hidden;$('legendBtn').classList.toggle('active',!$('legend').hidden)};
+
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.content[id^=tab-]').forEach(x=>x.hidden=x.id!=='tab-'+b.dataset.tab)});
+$('panelBtn').onclick=$('closePanel').onclick=()=>{$('panel').classList.toggle('collapsed');$('panelBtn').textContent=$('panel').classList.contains('collapsed')?'展开侧栏':'收起侧栏'};
+const mobileUI=matchMedia('(max-width:760px)');
+function syncMobilePanel(initial=false){
+  if(mobileUI.matches){
+    if(initial)$('panel').classList.add('collapsed');
+    $('panelBtn').textContent=$('panel').classList.contains('collapsed')?'展开侧栏':'收起侧栏';
+  }
+}
+syncMobilePanel(true);
+if(mobileUI.addEventListener)mobileUI.addEventListener('change',()=>syncMobilePanel(false));else if(mobileUI.addListener)mobileUI.addListener(()=>syncMobilePanel(false));
+$('textBtn').onclick=()=>document.body.classList.toggle('text-hidden');$('maxBtn').onclick=()=>{document.body.classList.toggle('maximized');resize()};$('fullBtn').onclick=async()=>{
+  try{
+    if(document.fullscreenElement){await document.exitFullscreen();return}
+    if(document.documentElement.requestFullscreen){await document.documentElement.requestFullscreen();return}
+  }catch(e){}
+  document.body.classList.toggle('maximized');
+  resize();
+};
+
+// ---------- views / orbit / touch ----------
+let target=eng(0,820,1460),drag=null,walk=false,keys={},pointers=new Map(),pinchDist=0;
+function setView(v){currentView=v;const presets={mlp:[eng(0,4750,1100),eng(0,821,1460)],row1:[eng(-1300,4700,1280),eng(0,821,1460)],row2:[eng(0,6700,1380),eng(0,821,1460)],front:[eng(0,6900,1900),eng(0,815,1460)],left:[eng(-2250,4300,1500),eng(500,4300,1250)],right:[eng(2250,4300,1500),eng(-500,4300,1250)],rear:[eng(0,1250,1800),eng(0,7600,1450)],top:[new T.Vector3(0,9,-4),new T.Vector3(0,0,-4)],overview:[new T.Vector3(5.35,4.55,-8.20),new T.Vector3(0,1.15,-4.0)],backstage:[eng(1800,3000,1700),eng(0,500,1450)],walk:[eng(0,4750,1500),eng(0,2500,1400)]};const [p,t]=presets[v]||presets.mlp;camera.position.copy(p);target.copy(t);if(innerWidth<760&&['overview','top'].includes(v))camera.position.sub(target).multiplyScalar(Math.max(1,1.45/camera.aspect)).add(target);camera.lookAt(target);walk=v==='walk';
+  ceiling.visible=true;
+  document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===v));}
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('pointerdown',e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});canvas.setPointerCapture(e.pointerId);if(pointers.size===1)drag={x:e.clientX,y:e.clientY};if(pointers.size===2){const a=[...pointers.values()];pinchDist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)}});
+canvas.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2){const a=[...pointers.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);if(pinchDist){const k=T.MathUtils.clamp(pinchDist/d,.92,1.08);camera.position.sub(target).multiplyScalar(k).add(target)}pinchDist=d;return}if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag={x:e.clientX,y:e.clientY};if(e.buttons===2||e.shiftKey){const right=new T.Vector3();camera.getWorldDirection(right);right.cross(camera.up).normalize();const pan=right.multiplyScalar(-dx*.0045).add(camera.up.clone().multiplyScalar(dy*.0045));camera.position.add(pan);target.add(pan)}else{const off=camera.position.clone().sub(target),s=new T.Spherical().setFromVector3(off);s.theta-=dx*.0055;s.phi=T.MathUtils.clamp(s.phi+dy*.0055,.10,Math.PI-.10);camera.position.copy(target).add(new T.Vector3().setFromSpherical(s))}camera.lookAt(target)});
+function pointerEnd(e){pointers.delete(e.pointerId);drag=null;if(pointers.size<2)pinchDist=0}canvas.addEventListener('pointerup',pointerEnd);canvas.addEventListener('pointercancel',pointerEnd);canvas.addEventListener('wheel',e=>{e.preventDefault();camera.position.sub(target).multiplyScalar(T.MathUtils.clamp(1+e.deltaY*.001,.84,1.18)).add(target)},{passive:false});
+
+
+// ---------- acoustic / engineering detail dialogs ----------
+const acousticCatalog=[
+ {
+  test:n=>n.includes('前墙宽频吸声'),
+  title:'前墙宽频吸声区',en:'Front-Wall Broadband Absorption',
+  role:'控制透声幕后前墙早期反射、扬声器边界干扰（SBIR）及前腔体能量。',
+  layers:[
+   ['房间 / Room','透声幕及幕墙内侧'],
+   ['透声面层 / Fabric','黑色阻燃透声布'],
+   ['多孔吸声层 / Porous Absorber','100–120 mm 矿棉 / 玻璃棉，48–60 kg/m³'],
+   ['背空 / Air Gap','条件允许时 50–100 mm'],
+   ['结构墙 / Structure','前墙基层']
+  ],
+  construction:'芯材连续铺设，避免大面积硬质裸露面；安装骨架不得形成明显声桥。最终厚度结合 LCR 边界响应与 REW / GSonic 复测深化。'
+ },
+ {
+  test:n=>n.includes('前角低频吸声'),
+  title:'前角低频吸声区',en:'Front-Corner Bass Trap',
+  role:'增加前角低频阻尼，降低房间轴向 / 切向模态在角部的能量积聚。',
+  layers:[
+   ['房间 / Room','驼色透声完成面外侧'],
+   ['透声面层 / Fabric','驼色阻燃透声布'],
+   ['低密度多孔层 / Porous Bass Trap','等效厚度 ≥200 mm'],
+   ['角部空气体积 / Air Volume','尽量利用墙角有效深度'],
+   ['结构角 / Structure','前墙 + 侧墙']
+  ],
+  construction:'优先保证有效厚度和连续体积，不把普通薄吸声板等同于低频陷阱。最终结构根据衰减时间与低频频响确定。'
+ },
+ {
+  test:n=>n.includes('第一反射'),
+  title:'侧墙第一反射吸声模块',en:'First-Reflection Broadband Absorber',
+  role:'削弱 L/C/R 经侧墙到达主听位的早期反射，提高对白清晰度、声像聚焦和前场稳定性。',
+  layers:[
+   ['房间 / Room','可见侧'],
+   ['装饰完成面 / Finish','满高驼色阻燃透声布'],
+   ['宽频吸声层 / Absorber','60–100 mm 多孔材料'],
+   ['背空 / Air Gap','建议 30–50 mm'],
+   ['结构墙 / Structure','侧墙基层']
+  ],
+  construction:'模块中心由当前 L/C/R 与 MLP 几何镜像计算；施工前仍建议用镜像法与 ETC（Energy Time Curve）复核实际覆盖范围。'
+ },
+ {
+  test:n=>n.includes('混合处理'),
+  title:'侧墙混合声学处理模块',en:'Hybrid Absorption / Scattering Module',
+  role:'控制中后段侧墙反射，同时避免整墙强吸声造成环绕声场过度干燥。',
+  layers:[
+   ['房间 / Room','可见侧'],
+   ['装饰完成面 / Finish','满高驼色阻燃透声布'],
+   ['条板 / 微穿孔层 / Slat Layer','木质条板或微穿孔饰面'],
+   ['多孔吸声层 / Porous Layer','50–100 mm'],
+   ['结构墙 / Structure','侧墙基层']
+  ],
+  construction:'条缝宽度、开孔率及背腔决定吸声 / 散射特性；当前为产品类型级方案，最终按成品实测数据和安装节点深化。'
+ },
+ {
+  test:n=>n.includes('后墙浅扩散'),
+  title:'后墙浅扩散模块',en:'Rear-Wall Shallow Diffusion',
+  role:'在第二排后方增加反射能量的空间离散，保持后场空间感并减少单一强反射。',
+  layers:[
+   ['房间 / Room','第二排后方'],
+   ['装饰完成面 / Finish','满高驼色阻燃透声布'],
+   ['扩散结构 / Diffuser','80–120 mm 木质 1D / 2D 浅扩散'],
+   ['安装背腔 / Mounting Cavity','按产品结构'],
+   ['结构墙 / Structure','后墙基层']
+  ],
+  construction:'扩散体避让 Rear 9410、GHD2、低音炮和机柜维护范围；扩散不能替代后墙低频 / 宽频吸声。有效频段以最终产品数据为准。'
+ },
+ {
+  test:n=>n.includes('后墙吸声'),
+  title:'后墙厚型宽频吸声模块',en:'Rear-Wall Thick Broadband Absorber',
+  role:'降低第二排耳位后方的强反射、梳状滤波和后墙回弹，改善后排清晰度。',
+  layers:[
+   ['房间 / Room','第二排后方'],
+   ['装饰完成面 / Finish','满高驼色阻燃透声布'],
+   ['厚型吸声层 / Thick Absorber','100–150 mm，40–60 kg/m³'],
+   ['安装背腔 / Cavity','按现场净深深化'],
+   ['结构墙 / Structure','后墙基层']
+  ],
+  construction:'模块按设备外包络分割并预留模型避让；实际机柜散热、检修距离和扬声器支架空间应按设备要求单独确认。'
+ },
+ {
+  test:n=>n.includes('地台低频辅助'),
+  title:'地台低频辅助处理区',en:'Riser Low-Frequency Damping',
+  role:'利用第二排地台内部体积增加低频阻尼，作为房间低频衰减的辅助处理。',
+  layers:[
+   ['地毯完成面 / Carpet','深色地毯'],
+   ['地台面板 / Deck','结构板'],
+   ['阻尼填充 / Damping Fill','30–48 kg/m³ 多孔吸声材料'],
+   ['地台空腔 / Riser Cavity','280 mm 地台空间'],
+   ['结构地面 / Floor','原结构地面']
+  ],
+  construction:'当前只定义为阻尼填充，不宣称为已调谐 Helmholtz / 膜式低频陷阱。若需要调谐结构，应根据现场 REW / GSonic 测量另行设计。'
+ }
+];
+
+function acousticInfoFor(name,detail=''){
+ const item=acousticCatalog.find(x=>x.test(name));
+ return item||{
+  title:name,en:'Acoustic Treatment Module',
+  role:detail||'声学处理模块。',
+  layers:[['房间 / Room','可见侧'],['透声完成面 / Finish','装饰表皮'],['声学处理层 / Treatment','按当前模块用途'],['结构基层 / Structure','墙体 / 地面']],
+  construction:detail||'最终结构在施工深化阶段确认。'
+ };
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function renderStructure(layers){
+ return `<div class="structure-stack">${layers.map((l,i)=>`${i?'<div class="structure-arrow">→</div>':''}<div class="structure-layer"><b>${esc(l[0])}</b><span>${esc(l[1])}</span></div>`).join('')}</div>`;
+}
+function showAcousticDialog(u){
+ const info=acousticInfoFor(u.name,u.detail);
+ $('acousticDialogTitle').textContent=u.name;
+ $('acousticDialogSub').textContent=info.en;
+ $('acousticDialogBody').innerHTML=`
+  <div class="info-grid">
+   <div class="info-cell"><b>模块功能 / Function</b><span>${esc(info.role)}</span></div>
+   <div class="info-cell"><b>位置 / Location</b><span>${esc(u.name)}</span></div>
+  </div>
+  <div class="structure-title">结构层级｜从房间侧 → 结构基层</div>
+  ${renderStructure(info.layers)}
+  <div class="structure-title">当前模块建议</div>
+  <div class="acoustic-copy">${esc(u.detail||info.role)}</div>
+  <div class="structure-title">施工结构说明</div>
+  <div class="acoustic-copy">${esc(info.construction)}</div>`;
+ $('acousticDialog').classList.add('open');
+}
+
+const channelCatalog=[
+ [/^L \/ JBL 3153/,'左前声道','Left'],
+ [/^C \/ JBL 3153/,'中置声道','Center'],
+ [/^R \/ JBL 3153/,'右前声道','Right'],
+ [/^SW1 /,'前左低音炮','Subwoofer 1 · Front Left'],
+ [/^SW2 /,'前右低音炮','Subwoofer 2 · Front Right'],
+ [/^SW3 /,'后左低音炮','Subwoofer 3 · Rear Left'],
+ [/^SW4 /,'后右低音炮','Subwoofer 4 · Rear Right'],
+ [/^Front Wide L/,'左前宽声道','Front Wide Left'],
+ [/^Front Wide R/,'右前宽声道','Front Wide Right'],
+ [/^Side Surround L/,'左侧环绕声道','Side Surround Left'],
+ [/^Side Surround R/,'右侧环绕声道','Side Surround Right'],
+ [/^Rear Surround L/,'左后环绕声道','Rear Surround Left'],
+ [/^Rear Surround R/,'右后环绕声道','Rear Surround Right'],
+ [/^Top Front L/,'左顶部前声道','Top Front Left'],
+ [/^Top Front R/,'右顶部前声道','Top Front Right'],
+ [/^Top Middle L/,'左顶部中声道','Top Middle Left'],
+ [/^Top Middle R/,'右顶部中声道','Top Middle Right'],
+ [/^Top Rear L/,'左顶部后声道','Top Rear Left'],
+ [/^Top Rear R/,'右顶部后声道','Top Rear Right'],
+ [/^KTV FL/,'KTV 前左声道','KTV Front Left'],
+ [/^KTV FR/,'KTV 前右声道','KTV Front Right'],
+ [/^KTV RL/,'KTV 后左声道','KTV Rear Left'],
+ [/^KTV RR/,'KTV 后右声道','KTV Rear Right']
+];
+const productDims={
+ '3153':'1218 × 560 × 455 mm',
+ '9410':'559 × 410 × 279 mm',
+ '8320':'406 × 343 × 224 mm',
+ '4645C':'1010 × 674 × 450 mm',
+ 'GHD2':'616 × 456 × 392 mm'
+};
+const productSpecs={
+ '3153':[
+   ['系统类型 / System','三分频屏幕扬声器 / 3-Way Screen Speaker'],
+   ['频率范围 / Frequency Range','50 Hz – 18 kHz (-10 dB)'],
+   ['系统阻抗 / Impedance','无源 4 Ω；低频 4 Ω；中高频 4 Ω'],
+   ['分频 / Crossover Mode','双功放（中高频 + 低频）或全频无源'],
+   ['系统功率 / Power','无源 460 W；双功放：低频 460 W，中高频 160 W'],
+   ['灵敏度 / Sensitivity','98 dB (4π)'],
+   ['最大峰值 SPL / Max Peak SPL','134 dB (2π)'],
+   ['系统指向性 / Coverage','90° × 50°（水平 × 垂直；-30° / +20°）'],
+   ['低频单元 / LF Driver','1 × 15"'],
+   ['中频单元 / MF Driver','1 × 6.5"'],
+   ['高频单元 / HF Driver','1 × 1"'],
+   ['合规 / Compliance','CE'],
+   ['箱体材料 / Materials','低频箱体：中纤板；中高频喇叭：塑料'],
+   ['颜色 / 表面处理','哑光黑，乙烯基'],
+   ['安装 / Mounting','中高频合一箱体'],
+   ['接头 / Connector','接线柱'],
+   ['尺寸 / Dimensions','455 × 560 × 1218 mm（深 × 宽 × 高）'],
+   ['净重 / Net Weight','33.5 kg']
+ ],
+ '9410':[
+   ['系统类型 / System','10" 二分频，低频反射式 / 10" 2-Way Bass Reflex'],
+   ['频率范围 / Frequency Range','60 Hz – 20 kHz（4π，-10 dB）'],
+   ['频率响应 / Frequency Response','75 Hz – 18 kHz（4π，±3 dB）'],
+   ['覆盖角 / Coverage','110° × 60°（H × V）'],
+   ['功率 / Power','350 W / 700 W / 1400 W（连续 / 节目 / 峰值）'],
+   ['功率测试条件','IEC 粉红噪声，6 dB 峰值因数，2 小时'],
+   ['灵敏度 / Sensitivity','99 dB（1 W @ 1 m）'],
+   ['最大声压级 / Max SPL','125 dB 连续；131 dB 峰值（@1 m）'],
+   ['额定阻抗 / Nominal Impedance','8 Ω'],
+   ['极性 / Polarity','EIA'],
+   ['低音单元 / LF Driver','1 × M110-8'],
+   ['高音单元 / HF Driver','1 × 2408H-2'],
+   ['箱体 / Enclosure','HIPS，黑色蚀纹表面'],
+   ['网罩 / Grille','HIPS，覆黑色声学布料'],
+   ['输入连接器 / Connector','接线柱'],
+   ['尺寸 / Dimensions','559 × 410 × 279 mm（H × W × D）'],
+   ['净重 / Net Weight','10.8 kg']
+ ],
+ '8320':[
+   ['频率范围 / Frequency Range','50 Hz – 20 kHz（-10 dB）'],
+   ['频率响应 / Frequency Response','65 Hz – 18 kHz（±3 dB）'],
+   ['AES 100 h 功率处理','70 W（23.4 Vrms），IEC / 粉红噪声'],
+   ['AES 2 h 功率处理','150 W（34.6 Vrms），IEC / 粉红噪声'],
+   ['灵敏度 / Sensitivity','自由场 91 dB；半空间 94 dB（1 W @ 1 m，参考 2.83 V）'],
+   ['标称阻抗 / Nominal Impedance','8 Ω'],
+   ['最小阻抗 / Minimum Impedance','5.5 Ω @ 170 Hz'],
+   ['最大峰值 SPL / Max Peak SPL','122 dB @ 1 m'],
+   ['最大连续 SPL / Max Continuous SPL','116 dB @ 1 m'],
+   ['水平覆盖 / Horizontal Coverage','平均 100°，400 Hz – 12 kHz（-6 dB）'],
+   ['垂直覆盖 / Vertical Coverage','平均 90°，400 Hz – 12 kHz（-6 dB）'],
+   ['分频频率 / Crossover','3000 Hz'],
+   ['高频轮廓 / HF Contour','ISO 2969 X 功率响应曲线'],
+   ['极性 / Polarity','EIA；红色端子加正向电压时鼓纸向外运动'],
+   ['低频单元 / LF Driver','200 mm（8"），38 mm（1.5"）音圈'],
+   ['高频单元 / HF Driver','25 mm（1"），25 mm（1"）音圈'],
+   ['辐射角 / Baffle Angle','齐平安装在背板上时标称 20°'],
+   ['箱体材质 / Enclosure','纹理黑色 H.I.P.S. 塑料'],
+   ['网罩 / Grille','黑色'],
+   ['输入接口 / Connector','五路接线柱'],
+   ['尺寸 / Dimensions','406 × 343 × 224 mm（H × W × D）'],
+   ['净重 / Net Weight','5.0 kg']
+ ],
+ '4645C':[
+   ['系统类型 / System','专业影院低音炮 / Cinema Subwoofer'],
+   ['额定阻抗 / Nominal Impedance','8 Ω'],
+   ['最小阻抗 / Minimum Impedance','7.2 Ω'],
+   ['连续粉红噪声功率','800 W'],
+   ['连续节目功率','1600 W'],
+   ['峰值功率 / Peak Power','3200 W'],
+   ['轴向灵敏度 50–500 Hz','99 dB（原始资料参考条件未完整标明）'],
+   ['轴向灵敏度 40–100 Hz','97 dB（原始资料参考条件未完整标明）'],
+   ['功率压缩 @ 80 W','0.6 dB（-10 dB 功率）'],
+   ['功率压缩 @ 400 W','2 dB（-3 dB 功率）'],
+   ['功率压缩 @ 800 W','3.3 dB（额定功率）'],
+   ['尺寸 / Dimensions','1010 × 674 × 450 mm'],
+   ['净重 / Net Weight','63 kg（138 lb）']
+ ],
+ 'GHD2':[
+   ['频率范围 / Frequency Range','48 Hz – 20 kHz（-10 dB）'],
+   ['频率响应 / Frequency Response','80 Hz – 18 kHz（±3 dB）'],
+   ['系统灵敏度 / Sensitivity','97 dB（1 W @ 1 m）'],
+   ['标称阻抗 / Nominal Impedance','8 Ω'],
+   ['最大 SPL / Max SPL','125 dB 连续平均；137 dB 峰值'],
+   ['额定功率 / Power','600 W / 1200 W / 2400 W（持续 / 节目 / 峰值）'],
+   ['低频驱动器 / LF Driver','2226H'],
+   ['高频驱动器 / HF Driver','2432H-1'],
+   ['箱体 / Enclosure','15 mm 桦木胶合板'],
+   ['饰面 / Finish','DuraFlex 饰面'],
+   ['网罩 / Grille','高光网罩表面'],
+   ['输入接口 / Connector','并联 NL4 Neutrik Speakon®，支持环通连接'],
+   ['尺寸 / Dimensions','616 × 456 × 392 mm（高 × 宽 × 深）'],
+   ['净重 / Net Weight','24.7 kg']
+ ]
+};
+function channelInfo(name){
+ const hit=channelCatalog.find(x=>x[0].test(name));
+ return hit?{zh:hit[1],en:hit[2]}:{zh:name.split('/')[0].trim(),en:'Channel'};
+}
+function renderProductSpecs(type){
+ const specs=productSpecs[type]||[];
+ if(!specs.length)return '<div class="acoustic-copy">当前项目资料未锁定该型号的更多产品参数。</div>';
+ return `<div class="info-grid">${specs.map(([k,v])=>`<div class="info-cell"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join('')}</div>`;
+}
+function findPhotoByName(part){
+ return ((photos.find(p=>p.name.includes(part))||{}).url||'');
+}
+function productImage(type){
+ if(type==='9410' && window.__speaker9410ProductImage)return window.__speaker9410ProductImage;
+ if(type==='3153')return (parseAssets.modelTextures&&parseAssets.modelTextures['3153'])||findPhotoByName('3159');
+ if(type==='8320')return (parseAssets.modelTextures&&parseAssets.modelTextures['8320'])||findPhotoByName('8320_front');
+ if(type==='9410')return (parseAssets.modelTextures&&parseAssets.modelTextures['9410'])||findPhotoByName('9400-Front');
+ if(type==='GHD2')return (parseAssets.modelTextures&&parseAssets.modelTextures['GHD2'])||findPhotoByName('GHD2_Front');
+ if(type==='4645C')return findPhotoByName('image_processing20260727-1-1hdckq');
+ return '';
+}
+function showSpeakerDialog(record){
+ const ch=channelInfo(record.name),img=productImage(record.type);
+ $('speakerDialogTitle').textContent=`${ch.zh} / ${ch.en}`;
+ $('speakerDialogSub').textContent=`JBL ${record.type}`;
+ $('speakerDialogBody').innerHTML=`
+  <div class="product-layout">
+   <div>
+    <div class="product-image-wrap">${img?`<img src="${img}" alt="JBL ${esc(record.type)}">`:'<span style="color:#697b88">暂无产品图片</span>'}</div>
+   </div>
+   <div>
+    <div class="info-grid">
+     <div class="info-cell"><b>声道名称</b><span>${esc(ch.zh)}</span></div>
+     <div class="info-cell"><b>Channel</b><span>${esc(ch.en)}</span></div>
+     <div class="info-cell"><b>产品型号 / Model</b><span>JBL ${esc(record.type)}</span></div>
+     <div class="info-cell"><b>箱体尺寸 / Cabinet Size</b><span>${esc(productDims[record.type]||'—')}<br><small>高 × 宽 × 深 / H × W × D</small></span></div>
+    </div>
+    <div class="structure-title">产品参数 / Specifications</div>
+    ${renderProductSpecs(record.type)}
+   </div>
+  </div>`;
+ $('speakerDialog').classList.add('open');
+}
+$('acousticDialogClose').onclick=()=>$('acousticDialog').classList.remove('open');
+$('speakerDialogClose').onclick=()=>$('speakerDialog').classList.remove('open');
+$('acousticDialog').addEventListener('click',e=>{if(e.target===$('acousticDialog'))$('acousticDialog').classList.remove('open')});
+$('speakerDialog').addEventListener('click',e=>{if(e.target===$('speakerDialog'))$('speakerDialog').classList.remove('open')});
+
+// ---------- click selection ----------
+function visibleInHierarchy(object){for(let p=object;p;p=p.parent)if(!p.visible)return false;return true}
+function firstHit(objects){
+ const hits=ray.intersectObjects(objects,true);
+ return hits.find(h=>h.object.userData&&h.object.userData.name&&visibleInHierarchy(h.object));
+}
+const ray=new T.Raycaster(),ptr=new T.Vector2();
+canvas.addEventListener('click',e=>{
+ if(Math.abs(e.movementX||0)>3||Math.abs(e.movementY||0)>3)return;
+ const r=canvas.getBoundingClientRect();
+ ptr.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+ ray.setFromCamera(ptr,camera);
+
+ // 声学模式：只响应声学模块。音箱点击在该模式下不显示尺寸、不弹产品信息。
+ if(mode==='acoustic'){
+   D.selectedDimActive=false;D.selectedSpeakerRecord=null;clearSelectedDimensions();rebuildLabels();
+   const hit=firstHit(G.acoustic.children);
+   if(!hit)return;
+   const u=hit.object.userData;
+   $('acousticInfo').textContent=(u.name+'：'+(u.detail||''));
+   document.querySelector('[data-tab=acoustics]').click();
+   showAcousticDialog(u);
+   return;
+ }
+
+ // 工程模式：只响应扬声器，显示双语声道、尺寸、型号、产品图片。
+ if(mode==='engineer'){
+   const speakerRoots=speakerRecords.map(s=>s.g);
+   const hit=firstHit(speakerRoots);
+   if(!hit)return;
+   const u=hit.object.userData;
+   const record=speakerRecords.find(s=>s.name===u.name);
+   if(!record)return;
+   D.selectedSpeakerRecord=record;
+   drawSelectedSpeakerDimensions(record);
+   $('selectionTitle').textContent=record.name;
+   $('selectionBody').textContent=u.detail||'JBL 扬声器。';
+   showSpeakerDialog(record);
+   return;
+ }
+
+ // 客户模式：保留普通对象说明，不主动绘制工程尺寸。
+ const hit=firstHit(root.children);
+ if(!hit)return;
+ const u=hit.object.userData;
+ $('selectionTitle').textContent=u.name;
+ $('selectionBody').textContent=u.detail||'影院模型对象。';
+ D.selectedDimActive=false;D.selectedSpeakerRecord=null;clearSelectedDimensions();rebuildLabels();
+ document.querySelector('[data-tab=equipment]').click();
+});
+
+// ---------- product photo references ----------
+const photos=parseAssets.photos;$('photoGrid').innerHTML=photos.map((p,i)=>`<button data-photo="${i}"><img src="${p.url}"><span>${p.name.replaceAll('&','&amp;')}</span></button>`).join('');let pi=0;function photo(i){pi=(i+photos.length)%photos.length;$('photoTitle').textContent=photos[pi].name;$('photoImage').src=photos[pi].url;$('photoCount').textContent=`${pi+1} / ${photos.length}`;$('photoDialog').classList.add('open')}document.querySelectorAll('[data-photo]').forEach(b=>b.onclick=()=>photo(+b.dataset.photo));$('photoClose').onclick=()=>$('photoDialog').classList.remove('open');$('photoPrev').onclick=()=>photo(pi-1);$('photoNext').onclick=()=>photo(pi+1);
+
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;if(w&&h){renderer.setPixelRatio(Math.min(devicePixelRatio,w<760?1.2:1.8));renderer.setSize(w,h,false);const oldAspect=camera.aspect;camera.aspect=w/h;camera.updateProjectionMatrix();if((oldAspect<.8)!==(camera.aspect<.8)&&['overview','top'].includes(currentView))setView(currentView)}}if(window.ResizeObserver){new ResizeObserver(resize).observe(canvas);}else{addEventListener('resize',resize);}
+resize();
+function updateDomLabels(){const w=canvas.clientWidth,h=canvas.clientHeight;document.querySelectorAll('.scene-label').forEach(el=>{const p=el._pos;if(!p)return;const v=p.clone().project(camera);const behind=v.z>1||v.z<-1;el.style.left=(v.x+1)*w/2+'px';el.style.top=(1-v.y)*h/2+'px';el.style.display=behind?'none':''})}
+function frame(){if(window.__cinemaDebug.fatalError)return;if(walk){const f=new T.Vector3();camera.getWorldDirection(f);f.y=0;f.normalize();const right=new T.Vector3().crossVectors(f,camera.up).normalize();const speed=.026;if(keys.KeyW||keys.ArrowUp)camera.position.addScaledVector(f,speed);if(keys.KeyS||keys.ArrowDown)camera.position.addScaledVector(f,-speed);if(keys.KeyA||keys.ArrowLeft)camera.position.addScaledVector(right,-speed);if(keys.KeyD||keys.ArrowRight)camera.position.addScaledVector(right,speed);camera.position.x=T.MathUtils.clamp(camera.position.x,-2.30,2.30);camera.position.z=T.MathUtils.clamp(camera.position.z,-7.70,-.90);camera.position.y=T.MathUtils.clamp(camera.position.y,.9,2.3);target.copy(camera.position).add(f.multiplyScalar(2));camera.lookAt(target)}renderer.render(scene,camera);ctx.onRendered();updateDomLabels();requestAnimationFrame(frame)}addEventListener('keydown',e=>{keys[e.code]=true;if(e.key==='Escape'&&document.fullscreenElement)document.exitFullscreen()});addEventListener('keyup',e=>keys[e.code]=false);
+
+
+return {setView,setMode,applyFinish,applyWallXray,applyBackgroundTheme,start(){applyBackgroundTheme(true);applyFinish(true);applyWallXray();setView("overview");setMode("client");frame()},state(){return {mode,wallXray,lightBg,finishEnabled,walk,currentView,camera:camera.position.toArray(),target:target.toArray()}}};
+}
+
+
+async function boot(){
+ const $=id=>document.getElementById(id);
+ const parseAssets=window.__cinemaEmbeddedAssets||await fetch('assets/catalog.json').then(r=>{if(!r.ok)throw new Error('本地资源目录加载失败');return r.json()});
+ $('brandLogo').src=parseAssets.logo;
+ const ctx={T,$,parseAssets,E,colors,ACOUSTIC_PALETTE};
+ Object.assign(ctx,createScene(ctx));
+ Object.assign(ctx,createMaterials(ctx));
+ for(const chip of document.querySelectorAll('[data-palette]'))chip.style.backgroundColor='#'+ACOUSTIC_PALETTE[chip.dataset.palette].toString(16).padStart(6,'0');
+ const patterns={sideSlat:ctx.acousticSwatches.sideSlat,rearDiffuser:ctx.acousticSwatches.rearDiffuser};
+ for(const chip of document.querySelectorAll('[data-pattern]'))chip.style.backgroundImage=`url(${patterns[chip.dataset.pattern]})`;
+ Object.assign(ctx,createGeometry(ctx));
+ Object.assign(ctx,createRoom(ctx));
+ Object.assign(ctx,createSpeakers(ctx));
+ Object.assign(ctx,createSeating(ctx));
+ Object.assign(ctx,createEquipment(ctx));
+ Object.assign(ctx,createAcoustics(ctx));
+ ctx.D=createDimensions(ctx);
+ Object.assign(ctx,validateGeometry(ctx));
+ const debug=window.__cinemaDebug;
+ debug.counts={...ctx.speakerRecords.reduce((a,r)=>(a[r.type]=(a[r.type]||0)+1,a),{}),speakers:ctx.speakerRecords.length,subs:ctx.speakerRecords.filter(r=>r.type==='4645C').length,sofas:2,roomMeshes:ctx.G.room.children.filter(m=>m.isMesh).length};
+ debug.checks=ctx.checks;
+ debug.webglRenderer=ctx.renderer.isWebGLRenderer;
+ debug.palette=ACOUSTIC_PALETTE;
+ debug.deliveryAudit=()=>({
+   screenSize:new T.Box3().setFromObject(ctx.G.screen).getSize(new T.Vector3()).toArray(),
+   baffleVisible:ctx.baffleWall.visible&&ctx.root.visible,
+   floor:{opacity:ctx.floor.material.opacity,depthWrite:ctx.floor.material.depthWrite,transparent:ctx.floor.material.transparent},
+   rearPanels:ctx.acousticPanels.map(o=>({name:o.name,min:new T.Box3().setFromObject(o).min.toArray(),max:new T.Box3().setFromObject(o).max.toArray()})),
+   equipment:ctx.equipmentBounds.map(o=>({name:o.name,min:o.bounds.min.toArray(),max:o.bounds.max.toArray()})),
+   wideBounds:ctx.speakerRecords.filter(r=>r.name.includes('Front Wide')).map(r=>({name:r.name,min:new T.Box3().setFromObject(r.g).min.toArray(),max:new T.Box3().setFromObject(r.g).max.toArray()})),
+   acousticMaterials:['acousticMineral','acousticFirst','acousticRear','acousticBass','acousticSlat','acousticDiffuser'].map(k=>({name:k,type:ctx.mats[k].type,toneMapped:ctx.mats[k].toneMapped}))
+ });
+ debug.acousticColors={frontBroadband:ctx.mats.acousticMineral.color.getHex(),firstReflection:ctx.mats.acousticFirst.color.getHex(),rearAbsorption:ctx.mats.acousticRear.color.getHex(),bassTreatment:ctx.mats.acousticBass.color.getHex(),sideSlat:ctx.mats.acousticSlat.color.getHex(),rearDiffuser:ctx.mats.acousticDiffuser.color.getHex()};
+ debug.speakers=ctx.speakerRecords.map(r=>({name:r.name,type:r.type,position:r.g.position.toArray(),rotation:r.g.rotation.toArray(),dims:r.dimsLocal,children:r.g.children.length,geometry:r.g.children.map(c=>c.children.map(m=>(m.geometry&&m.geometry.attributes&&m.geometry.attributes.position)?Array.from(m.geometry.attributes.position.array):[]))}));
+ debug.sceneSummary=()=>({renderer:ctx.renderer.info.render,counts:debug.counts,ui:(ctx.ui&&ctx.ui.state?ctx.ui.state():null),surfaces:{decorVisible:ctx.G.decor.visible,acousticVisible:ctx.G.acoustic.visible,backstageVisible:ctx.G.backstage.visible,screenVisible:ctx.G.screen.visible,wallColor:ctx.leftWall.material.color.getHex(),floorColor:ctx.floor.material.color.getHex(),ceilingVisible:ctx.ceiling.visible},sofas:[ctx.sofaRow1,ctx.sofaRow2].map(g=>{const b=new T.Box3().setFromObject(g);return {name:g.userData.name,min:b.min.toArray(),max:b.max.toArray(),width:b.max.x-b.min.x,depth:b.max.z-b.min.z}}),redSofaFrames:[ctx.sofaRow1,ctx.sofaRow2].flatMap(g=>{const found=[];g.traverse(o=>{if(o.isLineSegments)found.push(o.uuid)});return found})});
+ // Readiness follows a successful renderer.render, never a timer or CSS override.
+ ctx.onRendered=()=>{
+   if(ctx.renderer.getContext().isContextLost())throw new Error('WebGL 上下文已丢失');
+   debug.frames++;
+   if(!debug.sceneReady){debug.sceneReady=true;window.__sceneReady=true;$('loading').classList.add('done');}
+ };
+ ctx.canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();window.__reportCinemaError(new Error('WebGL 上下文丢失，请重新加载页面'));});
+ ctx.ui=createUI(ctx);debug.ui=ctx.ui;debug.projectSpeaker=(name)=>{const r=ctx.speakerRecords.find(r=>r.name===name);if(!r)return null;const v=r.axisOrigin.clone().project(ctx.camera),rect=ctx.canvas.getBoundingClientRect();return {x:rect.left+(v.x+1)*rect.width/2,y:rect.top+(1-v.y)*rect.height/2}};
+ ctx.ui.start();
+}
+boot().catch(window.__reportCinemaError);
+
+
+window.__speaker9410ProductImage='data:image/png;base64,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kTUEO1Mqlbj44ovx8ccfQ61W44EHHsCrr76KUCgkPken0+Gxxx7DlClT8MADD2Djxo0ynnHiyR2E1CKUDwVhFpAjCLVaLTiOS3q9yWK1WnHZZZehvLwc9913H4qKigAc+Vm7XC68+uqrWLBgAR5//HHMnz8fY8eOTclVa3Jzc3H55ZdjyZIlCAQCmDZtGrZs2SL+7hQKBX71q1/hkUcewe23346vv/5alr+nZAgGg7JtUixnCBMKwownV4tQrnqTYd++fXjkkUcwZ84c3HzzzWLAcRyHDz/8EA888AByc3PxzjvvoKKiQuaz7b677roLCxcuxPLly/HAAw9gz5494mPl5eX47LPP8MMPP+C5557LyNa+XGEU+T9JxTdK2YJ+8hms86LbctTdeVJ6pti0aRMmTZqEuXPnipPkAaClpQUXXnghNm3ahD//+c+4+uqr07Kra/jw4Xj44Ydx7bXX4vrrr8c//vEP8XeYl5eHxx9/HMFgEH/6058yrsVPrbLsRUGY4eRsEWaSyD6Ab731FjZu3IiBAwcCANxuN1577TU8+eSTeOSRR/D000/Lslal1EaOHIkvv/wS+/btw7x587B582bxsfnz52Po0KH44x//iLa2NhnPUlpydY1G/j8z7X8mnVAQZjjqGu07QRDw+uuv4+2338aCBQtQUlIC4MgAh9tuuw0KhQJPP/00TjvtNJnPVFq5ubm477778Lvf/Q4PPvgg3n77bfGxmTNnYurUqZgzZw7sdrt8JykhubtGiXwoCDOYnKNGM6VrNBwO45133kFdXR0++OADcbWVTz75BLfccguuuOIKzJo1S5b1KZNBoVCguroaf//737F//348+uijsFqtUCqVOOecc3DjjTfiT3/6E/bv3y/3qfaZ3EFILUL5UBBmOOoa7T2O4/Dkk09i165d+NOf/gSlUolgMIh7770X69evx/PPP4+pU6dmxSAHk8mEhx56CKeffjqmT58uTqWYMmUKZs2ahXvvvTftw1DOUaOZ8P+SzjL/PzjLqVQq+Hy+pNeb7l2j4XAYb731FgDgySefhMFgQENDA+6//370798fjz76KAoKCuQ9ySRTKpWYPHkyli9fjldeeQX//Oc/wXEcxo4di4cffhiPP/44Dhw4IPdp9hq1CLMXBWGG02q1cLvdSa9XzhGrfRUOh/H000+jvr4ed999NwBg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';
+</script>
+</body></html>
