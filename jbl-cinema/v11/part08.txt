@@ -1,0 +1,4999 @@
+
+			return - 1;
+
+		}
+
+		return drawInfo[ instanceId ].geometryIndex;
+
+	}
+
+	getGeometryRangeAt( geometryId, target = {} ) {
+
+		if ( geometryId < 0 || geometryId >= this._geometryCount ) {
+
+			return null;
+
+		}
+
+		const drawRange = this._drawRanges[ geometryId ];
+
+		target.start = drawRange.start;
+		target.count = drawRange.count;
+
+		return target;
+
+	}
+
+	raycast( raycaster, intersects ) {
+
+		const drawInfo = this._drawInfo;
+		const drawRanges = this._drawRanges;
+		const matrixWorld = this.matrixWorld;
+		const batchGeometry = this.geometry;
+
+		// iterate over each geometry
+		_mesh.material = this.material;
+		_mesh.geometry.index = batchGeometry.index;
+		_mesh.geometry.attributes = batchGeometry.attributes;
+		if ( _mesh.geometry.boundingBox === null ) {
+
+			_mesh.geometry.boundingBox = new Box3();
+
+		}
+
+		if ( _mesh.geometry.boundingSphere === null ) {
+
+			_mesh.geometry.boundingSphere = new Sphere();
+
+		}
+
+		for ( let i = 0, l = drawInfo.length; i < l; i ++ ) {
+
+			if ( ! drawInfo[ i ].visible || ! drawInfo[ i ].active ) {
+
+				continue;
+
+			}
+
+			const geometryId = drawInfo[ i ].geometryIndex;
+			const drawRange = drawRanges[ geometryId ];
+			_mesh.geometry.setDrawRange( drawRange.start, drawRange.count );
+
+			// ge the intersects
+			this.getMatrixAt( i, _mesh.matrixWorld ).premultiply( matrixWorld );
+			this.getBoundingBoxAt( geometryId, _mesh.geometry.boundingBox );
+			this.getBoundingSphereAt( geometryId, _mesh.geometry.boundingSphere );
+			_mesh.raycast( raycaster, _batchIntersects );
+
+			// add batch id to the intersects
+			for ( let j = 0, l = _batchIntersects.length; j < l; j ++ ) {
+
+				const intersect = _batchIntersects[ j ];
+				intersect.object = this;
+				intersect.batchId = i;
+				intersects.push( intersect );
+
+			}
+
+			_batchIntersects.length = 0;
+
+		}
+
+		_mesh.material = null;
+		_mesh.geometry.index = null;
+		_mesh.geometry.attributes = {};
+		_mesh.geometry.setDrawRange( 0, Infinity );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.geometry = source.geometry.clone();
+		this.perObjectFrustumCulled = source.perObjectFrustumCulled;
+		this.sortObjects = source.sortObjects;
+		this.boundingBox = source.boundingBox !== null ? source.boundingBox.clone() : null;
+		this.boundingSphere = source.boundingSphere !== null ? source.boundingSphere.clone() : null;
+
+		this._drawRanges = source._drawRanges.map( range => ( { ...range } ) );
+		this._reservedRanges = source._reservedRanges.map( range => ( { ...range } ) );
+
+		this._drawInfo = source._drawInfo.map( inf => ( { ...inf } ) );
+		this._bounds = source._bounds.map( bound => ( {
+			boxInitialized: bound.boxInitialized,
+			box: bound.box.clone(),
+
+			sphereInitialized: bound.sphereInitialized,
+			sphere: bound.sphere.clone()
+		} ) );
+
+		this._maxInstanceCount = source._maxInstanceCount;
+		this._maxVertexCount = source._maxVertexCount;
+		this._maxIndexCount = source._maxIndexCount;
+
+		this._geometryInitialized = source._geometryInitialized;
+		this._geometryCount = source._geometryCount;
+		this._multiDrawCounts = source._multiDrawCounts.slice();
+		this._multiDrawStarts = source._multiDrawStarts.slice();
+
+		this._matricesTexture = source._matricesTexture.clone();
+		this._matricesTexture.image.data = this._matricesTexture.image.data.slice();
+
+		if ( this._colorsTexture !== null ) {
+
+			this._colorsTexture = source._colorsTexture.clone();
+			this._colorsTexture.image.data = this._colorsTexture.image.data.slice();
+
+		}
+
+		return this;
+
+	}
+
+	dispose() {
+
+		// Assuming the geometry is not shared with other meshes
+		this.geometry.dispose();
+
+		this._matricesTexture.dispose();
+		this._matricesTexture = null;
+
+		this._indirectTexture.dispose();
+		this._indirectTexture = null;
+
+		if ( this._colorsTexture !== null ) {
+
+			this._colorsTexture.dispose();
+			this._colorsTexture = null;
+
+		}
+
+		return this;
+
+	}
+
+	onBeforeRender( renderer, scene, camera, geometry, material/*, _group*/ ) {
+
+		// if visibility has not changed and frustum culling and object sorting is not required
+		// then skip iterating over all items
+		if ( ! this._visibilityChanged && ! this.perObjectFrustumCulled && ! this.sortObjects ) {
+
+			return;
+
+		}
+
+		// the indexed version of the multi draw function requires specifying the start
+		// offset in bytes.
+		const index = geometry.getIndex();
+		const bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
+
+		const drawInfo = this._drawInfo;
+		const multiDrawStarts = this._multiDrawStarts;
+		const multiDrawCounts = this._multiDrawCounts;
+		const drawRanges = this._drawRanges;
+		const perObjectFrustumCulled = this.perObjectFrustumCulled;
+		const indirectTexture = this._indirectTexture;
+		const indirectArray = indirectTexture.image.data;
+
+		// prepare the frustum in the local frame
+		if ( perObjectFrustumCulled ) {
+
+			_projScreenMatrix$2
+				.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse )
+				.multiply( this.matrixWorld );
+			_frustum.setFromProjectionMatrix(
+				_projScreenMatrix$2,
+				renderer.coordinateSystem
+			);
+
+		}
+
+		let count = 0;
+		if ( this.sortObjects ) {
+
+			// get the camera position in the local frame
+			_invMatrixWorld.copy( this.matrixWorld ).invert();
+			_vector$5.setFromMatrixPosition( camera.matrixWorld ).applyMatrix4( _invMatrixWorld );
+			_forward.set( 0, 0, - 1 ).transformDirection( camera.matrixWorld ).transformDirection( _invMatrixWorld );
+
+			for ( let i = 0, l = drawInfo.length; i < l; i ++ ) {
+
+				if ( drawInfo[ i ].visible && drawInfo[ i ].active ) {
+
+					const geometryId = drawInfo[ i ].geometryIndex;
+
+					// get the bounds in world space
+					this.getMatrixAt( i, _matrix$1 );
+					this.getBoundingSphereAt( geometryId, _sphere$2 ).applyMatrix4( _matrix$1 );
+
+					// determine whether the batched geometry is within the frustum
+					let culled = false;
+					if ( perObjectFrustumCulled ) {
+
+						culled = ! _frustum.intersectsSphere( _sphere$2 );
+
+					}
+
+					if ( ! culled ) {
+
+						// get the distance from camera used for sorting
+						const z = _temp.subVectors( _sphere$2.center, _vector$5 ).dot( _forward );
+						_renderList.push( drawRanges[ geometryId ], z, i );
+
+					}
+
+				}
+
+			}
+
+			// Sort the draw ranges and prep for rendering
+			const list = _renderList.list;
+			const customSort = this.customSort;
+			if ( customSort === null ) {
+
+				list.sort( material.transparent ? sortTransparent : sortOpaque );
+
+			} else {
+
+				customSort.call( this, list, camera );
+
+			}
+
+			for ( let i = 0, l = list.length; i < l; i ++ ) {
+
+				const item = list[ i ];
+				multiDrawStarts[ count ] = item.start * bytesPerElement;
+				multiDrawCounts[ count ] = item.count;
+				indirectArray[ count ] = item.index;
+				count ++;
+
+			}
+
+			_renderList.reset();
+
+		} else {
+
+			for ( let i = 0, l = drawInfo.length; i < l; i ++ ) {
+
+				if ( drawInfo[ i ].visible && drawInfo[ i ].active ) {
+
+					const geometryId = drawInfo[ i ].geometryIndex;
+
+					// determine whether the batched geometry is within the frustum
+					let culled = false;
+					if ( perObjectFrustumCulled ) {
+
+						// get the bounds in world space
+						this.getMatrixAt( i, _matrix$1 );
+						this.getBoundingSphereAt( geometryId, _sphere$2 ).applyMatrix4( _matrix$1 );
+						culled = ! _frustum.intersectsSphere( _sphere$2 );
+
+					}
+
+					if ( ! culled ) {
+
+						const range = drawRanges[ geometryId ];
+						multiDrawStarts[ count ] = range.start * bytesPerElement;
+						multiDrawCounts[ count ] = range.count;
+						indirectArray[ count ] = i;
+						count ++;
+
+					}
+
+				}
+
+			}
+
+		}
+
+		indirectTexture.needsUpdate = true;
+		this._multiDrawCount = count;
+		this._visibilityChanged = false;
+
+	}
+
+	onBeforeShadow( renderer, object, camera, shadowCamera, geometry, depthMaterial/* , group */ ) {
+
+		this.onBeforeRender( renderer, null, shadowCamera, geometry, depthMaterial );
+
+	}
+
+}
+
+class LineBasicMaterial extends Material {
+
+	constructor( parameters ) {
+
+		super();
+
+		this.isLineBasicMaterial = true;
+
+		this.type = 'LineBasicMaterial';
+
+		this.color = new Color( 0xffffff );
+
+		this.map = null;
+
+		this.linewidth = 1;
+		this.linecap = 'round';
+		this.linejoin = 'round';
+
+		this.fog = true;
+
+		this.setValues( parameters );
+
+	}
+
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.color.copy( source.color );
+
+		this.map = source.map;
+
+		this.linewidth = source.linewidth;
+		this.linecap = source.linecap;
+		this.linejoin = source.linejoin;
+
+		this.fog = source.fog;
+
+		return this;
+
+	}
+
+}
+
+const _vStart = /*@__PURE__*/ new Vector3();
+const _vEnd = /*@__PURE__*/ new Vector3();
+
+const _inverseMatrix$1 = /*@__PURE__*/ new Matrix4();
+const _ray$1 = /*@__PURE__*/ new Ray();
+const _sphere$1 = /*@__PURE__*/ new Sphere();
+
+const _intersectPointOnRay = /*@__PURE__*/ new Vector3();
+const _intersectPointOnSegment = /*@__PURE__*/ new Vector3();
+
+class Line extends Object3D {
+
+	constructor( geometry = new BufferGeometry(), material = new LineBasicMaterial() ) {
+
+		super();
+
+		this.isLine = true;
+
+		this.type = 'Line';
+
+		this.geometry = geometry;
+		this.material = material;
+
+		this.updateMorphTargets();
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.material = Array.isArray( source.material ) ? source.material.slice() : source.material;
+		this.geometry = source.geometry;
+
+		return this;
+
+	}
+
+	computeLineDistances() {
+
+		const geometry = this.geometry;
+
+		// we assume non-indexed geometry
+
+		if ( geometry.index === null ) {
+
+			const positionAttribute = geometry.attributes.position;
+			const lineDistances = [ 0 ];
+
+			for ( let i = 1, l = positionAttribute.count; i < l; i ++ ) {
+
+				_vStart.fromBufferAttribute( positionAttribute, i - 1 );
+				_vEnd.fromBufferAttribute( positionAttribute, i );
+
+				lineDistances[ i ] = lineDistances[ i - 1 ];
+				lineDistances[ i ] += _vStart.distanceTo( _vEnd );
+
+			}
+
+			geometry.setAttribute( 'lineDistance', new Float32BufferAttribute( lineDistances, 1 ) );
+
+		} else {
+
+			console.warn( 'THREE.Line.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.' );
+
+		}
+
+		return this;
+
+	}
+
+	raycast( raycaster, intersects ) {
+
+		const geometry = this.geometry;
+		const matrixWorld = this.matrixWorld;
+		const threshold = raycaster.params.Line.threshold;
+		const drawRange = geometry.drawRange;
+
+		// Checking boundingSphere distance to ray
+
+		if ( geometry.boundingSphere === null ) geometry.computeBoundingSphere();
+
+		_sphere$1.copy( geometry.boundingSphere );
+		_sphere$1.applyMatrix4( matrixWorld );
+		_sphere$1.radius += threshold;
+
+		if ( raycaster.ray.intersectsSphere( _sphere$1 ) === false ) return;
+
+		//
+
+		_inverseMatrix$1.copy( matrixWorld ).invert();
+		_ray$1.copy( raycaster.ray ).applyMatrix4( _inverseMatrix$1 );
+
+		const localThreshold = threshold / ( ( this.scale.x + this.scale.y + this.scale.z ) / 3 );
+		const localThresholdSq = localThreshold * localThreshold;
+
+		const step = this.isLineSegments ? 2 : 1;
+
+		const index = geometry.index;
+		const attributes = geometry.attributes;
+		const positionAttribute = attributes.position;
+
+		if ( index !== null ) {
+
+			const start = Math.max( 0, drawRange.start );
+			const end = Math.min( index.count, ( drawRange.start + drawRange.count ) );
+
+			for ( let i = start, l = end - 1; i < l; i += step ) {
+
+				const a = index.getX( i );
+				const b = index.getX( i + 1 );
+
+				const intersect = checkIntersection( this, raycaster, _ray$1, localThresholdSq, a, b );
+
+				if ( intersect ) {
+
+					intersects.push( intersect );
+
+				}
+
+			}
+
+			if ( this.isLineLoop ) {
+
+				const a = index.getX( end - 1 );
+				const b = index.getX( start );
+
+				const intersect = checkIntersection( this, raycaster, _ray$1, localThresholdSq, a, b );
+
+				if ( intersect ) {
+
+					intersects.push( intersect );
+
+				}
+
+			}
+
+		} else {
+
+			const start = Math.max( 0, drawRange.start );
+			const end = Math.min( positionAttribute.count, ( drawRange.start + drawRange.count ) );
+
+			for ( let i = start, l = end - 1; i < l; i += step ) {
+
+				const intersect = checkIntersection( this, raycaster, _ray$1, localThresholdSq, i, i + 1 );
+
+				if ( intersect ) {
+
+					intersects.push( intersect );
+
+				}
+
+			}
+
+			if ( this.isLineLoop ) {
+
+				const intersect = checkIntersection( this, raycaster, _ray$1, localThresholdSq, end - 1, start );
+
+				if ( intersect ) {
+
+					intersects.push( intersect );
+
+				}
+
+			}
+
+		}
+
+	}
+
+	updateMorphTargets() {
+
+		const geometry = this.geometry;
+
+		const morphAttributes = geometry.morphAttributes;
+		const keys = Object.keys( morphAttributes );
+
+		if ( keys.length > 0 ) {
+
+			const morphAttribute = morphAttributes[ keys[ 0 ] ];
+
+			if ( morphAttribute !== undefined ) {
+
+				this.morphTargetInfluences = [];
+				this.morphTargetDictionary = {};
+
+				for ( let m = 0, ml = morphAttribute.length; m < ml; m ++ ) {
+
+					const name = morphAttribute[ m ].name || String( m );
+
+					this.morphTargetInfluences.push( 0 );
+					this.morphTargetDictionary[ name ] = m;
+
+				}
+
+			}
+
+		}
+
+	}
+
+}
+
+function checkIntersection( object, raycaster, ray, thresholdSq, a, b ) {
+
+	const positionAttribute = object.geometry.attributes.position;
+
+	_vStart.fromBufferAttribute( positionAttribute, a );
+	_vEnd.fromBufferAttribute( positionAttribute, b );
+
+	const distSq = ray.distanceSqToSegment( _vStart, _vEnd, _intersectPointOnRay, _intersectPointOnSegment );
+
+	if ( distSq > thresholdSq ) return;
+
+	_intersectPointOnRay.applyMatrix4( object.matrixWorld ); // Move back to world space for distance calculation
+
+	const distance = raycaster.ray.origin.distanceTo( _intersectPointOnRay );
+
+	if ( distance < raycaster.near || distance > raycaster.far ) return;
+
+	return {
+
+		distance: distance,
+		// What do we want? intersection point on the ray or on the segment??
+		// point: raycaster.ray.at( distance ),
+		point: _intersectPointOnSegment.clone().applyMatrix4( object.matrixWorld ),
+		index: a,
+		face: null,
+		faceIndex: null,
+		barycoord: null,
+		object: object
+
+	};
+
+}
+
+const _start = /*@__PURE__*/ new Vector3();
+const _end = /*@__PURE__*/ new Vector3();
+
+class LineSegments extends Line {
+
+	constructor( geometry, material ) {
+
+		super( geometry, material );
+
+		this.isLineSegments = true;
+
+		this.type = 'LineSegments';
+
+	}
+
+	computeLineDistances() {
+
+		const geometry = this.geometry;
+
+		// we assume non-indexed geometry
+
+		if ( geometry.index === null ) {
+
+			const positionAttribute = geometry.attributes.position;
+			const lineDistances = [];
+
+			for ( let i = 0, l = positionAttribute.count; i < l; i += 2 ) {
+
+				_start.fromBufferAttribute( positionAttribute, i );
+				_end.fromBufferAttribute( positionAttribute, i + 1 );
+
+				lineDistances[ i ] = ( i === 0 ) ? 0 : lineDistances[ i - 1 ];
+				lineDistances[ i + 1 ] = lineDistances[ i ] + _start.distanceTo( _end );
+
+			}
+
+			geometry.setAttribute( 'lineDistance', new Float32BufferAttribute( lineDistances, 1 ) );
+
+		} else {
+
+			console.warn( 'THREE.LineSegments.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.' );
+
+		}
+
+		return this;
+
+	}
+
+}
+
+class LineLoop extends Line {
+
+	constructor( geometry, material ) {
+
+		super( geometry, material );
+
+		this.isLineLoop = true;
+
+		this.type = 'LineLoop';
+
+	}
+
+}
+
+class PointsMaterial extends Material {
+
+	constructor( parameters ) {
+
+		super();
+
+		this.isPointsMaterial = true;
+
+		this.type = 'PointsMaterial';
+
+		this.color = new Color( 0xffffff );
+
+		this.map = null;
+
+		this.alphaMap = null;
+
+		this.size = 1;
+		this.sizeAttenuation = true;
+
+		this.fog = true;
+
+		this.setValues( parameters );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.color.copy( source.color );
+
+		this.map = source.map;
+
+		this.alphaMap = source.alphaMap;
+
+		this.size = source.size;
+		this.sizeAttenuation = source.sizeAttenuation;
+
+		this.fog = source.fog;
+
+		return this;
+
+	}
+
+}
+
+const _inverseMatrix = /*@__PURE__*/ new Matrix4();
+const _ray = /*@__PURE__*/ new Ray();
+const _sphere = /*@__PURE__*/ new Sphere();
+const _position$2 = /*@__PURE__*/ new Vector3();
+
+class Points extends Object3D {
+
+	constructor( geometry = new BufferGeometry(), material = new PointsMaterial() ) {
+
+		super();
+
+		this.isPoints = true;
+
+		this.type = 'Points';
+
+		this.geometry = geometry;
+		this.material = material;
+
+		this.updateMorphTargets();
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.material = Array.isArray( source.material ) ? source.material.slice() : source.material;
+		this.geometry = source.geometry;
+
+		return this;
+
+	}
+
+	raycast( raycaster, intersects ) {
+
+		const geometry = this.geometry;
+		const matrixWorld = this.matrixWorld;
+		const threshold = raycaster.params.Points.threshold;
+		const drawRange = geometry.drawRange;
+
+		// Checking boundingSphere distance to ray
+
+		if ( geometry.boundingSphere === null ) geometry.computeBoundingSphere();
+
+		_sphere.copy( geometry.boundingSphere );
+		_sphere.applyMatrix4( matrixWorld );
+		_sphere.radius += threshold;
+
+		if ( raycaster.ray.intersectsSphere( _sphere ) === false ) return;
+
+		//
+
+		_inverseMatrix.copy( matrixWorld ).invert();
+		_ray.copy( raycaster.ray ).applyMatrix4( _inverseMatrix );
+
+		const localThreshold = threshold / ( ( this.scale.x + this.scale.y + this.scale.z ) / 3 );
+		const localThresholdSq = localThreshold * localThreshold;
+
+		const index = geometry.index;
+		const attributes = geometry.attributes;
+		const positionAttribute = attributes.position;
+
+		if ( index !== null ) {
+
+			const start = Math.max( 0, drawRange.start );
+			const end = Math.min( index.count, ( drawRange.start + drawRange.count ) );
+
+			for ( let i = start, il = end; i < il; i ++ ) {
+
+				const a = index.getX( i );
+
+				_position$2.fromBufferAttribute( positionAttribute, a );
+
+				testPoint( _position$2, a, localThresholdSq, matrixWorld, raycaster, intersects, this );
+
+			}
+
+		} else {
+
+			const start = Math.max( 0, drawRange.start );
+			const end = Math.min( positionAttribute.count, ( drawRange.start + drawRange.count ) );
+
+			for ( let i = start, l = end; i < l; i ++ ) {
+
+				_position$2.fromBufferAttribute( positionAttribute, i );
+
+				testPoint( _position$2, i, localThresholdSq, matrixWorld, raycaster, intersects, this );
+
+			}
+
+		}
+
+	}
+
+	updateMorphTargets() {
+
+		const geometry = this.geometry;
+
+		const morphAttributes = geometry.morphAttributes;
+		const keys = Object.keys( morphAttributes );
+
+		if ( keys.length > 0 ) {
+
+			const morphAttribute = morphAttributes[ keys[ 0 ] ];
+
+			if ( morphAttribute !== undefined ) {
+
+				this.morphTargetInfluences = [];
+				this.morphTargetDictionary = {};
+
+				for ( let m = 0, ml = morphAttribute.length; m < ml; m ++ ) {
+
+					const name = morphAttribute[ m ].name || String( m );
+
+					this.morphTargetInfluences.push( 0 );
+					this.morphTargetDictionary[ name ] = m;
+
+				}
+
+			}
+
+		}
+
+	}
+
+}
+
+function testPoint( point, index, localThresholdSq, matrixWorld, raycaster, intersects, object ) {
+
+	const rayPointDistanceSq = _ray.distanceSqToPoint( point );
+
+	if ( rayPointDistanceSq < localThresholdSq ) {
+
+		const intersectPoint = new Vector3();
+
+		_ray.closestPointToPoint( point, intersectPoint );
+		intersectPoint.applyMatrix4( matrixWorld );
+
+		const distance = raycaster.ray.origin.distanceTo( intersectPoint );
+
+		if ( distance < raycaster.near || distance > raycaster.far ) return;
+
+		intersects.push( {
+
+			distance: distance,
+			distanceToRay: Math.sqrt( rayPointDistanceSq ),
+			point: intersectPoint,
+			index: index,
+			face: null,
+			faceIndex: null,
+			barycoord: null,
+			object: object
+
+		} );
+
+	}
+
+}
+
+class VideoTexture extends Texture {
+
+	constructor( video, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy ) {
+
+		super( video, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy );
+
+		this.isVideoTexture = true;
+
+		this.minFilter = minFilter !== undefined ? minFilter : LinearFilter;
+		this.magFilter = magFilter !== undefined ? magFilter : LinearFilter;
+
+		this.generateMipmaps = false;
+
+		const scope = this;
+
+		function updateVideo() {
+
+			scope.needsUpdate = true;
+			video.requestVideoFrameCallback( updateVideo );
+
+		}
+
+		if ( 'requestVideoFrameCallback' in video ) {
+
+			video.requestVideoFrameCallback( updateVideo );
+
+		}
+
+	}
+
+	clone() {
+
+		return new this.constructor( this.image ).copy( this );
+
+	}
+
+	update() {
+
+		const video = this.image;
+		const hasVideoFrameCallback = 'requestVideoFrameCallback' in video;
+
+		if ( hasVideoFrameCallback === false && video.readyState >= video.HAVE_CURRENT_DATA ) {
+
+			this.needsUpdate = true;
+
+		}
+
+	}
+
+}
+
+class FramebufferTexture extends Texture {
+
+	constructor( width, height ) {
+
+		super( { width, height } );
+
+		this.isFramebufferTexture = true;
+
+		this.magFilter = NearestFilter;
+		this.minFilter = NearestFilter;
+
+		this.generateMipmaps = false;
+
+		this.needsUpdate = true;
+
+	}
+
+}
+
+class CompressedTexture extends Texture {
+
+	constructor( mipmaps, width, height, format, type, mapping, wrapS, wrapT, magFilter, minFilter, anisotropy, colorSpace ) {
+
+		super( null, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy, colorSpace );
+
+		this.isCompressedTexture = true;
+
+		this.image = { width: width, height: height };
+		this.mipmaps = mipmaps;
+
+		// no flipping for cube textures
+		// (also flipping doesn't work for compressed textures )
+
+		this.flipY = false;
+
+		// can't generate mipmaps for compressed textures
+		// mips must be embedded in DDS files
+
+		this.generateMipmaps = false;
+
+	}
+
+}
+
+class CompressedArrayTexture extends CompressedTexture {
+
+	constructor( mipmaps, width, height, depth, format, type ) {
+
+		super( mipmaps, width, height, format, type );
+
+		this.isCompressedArrayTexture = true;
+		this.image.depth = depth;
+		this.wrapR = ClampToEdgeWrapping;
+
+		this.layerUpdates = new Set();
+
+	}
+
+	addLayerUpdate( layerIndex ) {
+
+		this.layerUpdates.add( layerIndex );
+
+	}
+
+	clearLayerUpdates() {
+
+		this.layerUpdates.clear();
+
+	}
+
+}
+
+class CompressedCubeTexture extends CompressedTexture {
+
+	constructor( images, format, type ) {
+
+		super( undefined, images[ 0 ].width, images[ 0 ].height, format, type, CubeReflectionMapping );
+
+		this.isCompressedCubeTexture = true;
+		this.isCubeTexture = true;
+
+		this.image = images;
+
+	}
+
+}
+
+class CanvasTexture extends Texture {
+
+	constructor( canvas, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy ) {
+
+		super( canvas, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy );
+
+		this.isCanvasTexture = true;
+
+		this.needsUpdate = true;
+
+	}
+
+}
+
+/**
+ * Extensible curve object.
+ *
+ * Some common of curve methods:
+ * .getPoint( t, optionalTarget ), .getTangent( t, optionalTarget )
+ * .getPointAt( u, optionalTarget ), .getTangentAt( u, optionalTarget )
+ * .getPoints(), .getSpacedPoints()
+ * .getLength()
+ * .updateArcLengths()
+ *
+ * This following curves inherit from THREE.Curve:
+ *
+ * -- 2D curves --
+ * THREE.ArcCurve
+ * THREE.CubicBezierCurve
+ * THREE.EllipseCurve
+ * THREE.LineCurve
+ * THREE.QuadraticBezierCurve
+ * THREE.SplineCurve
+ *
+ * -- 3D curves --
+ * THREE.CatmullRomCurve3
+ * THREE.CubicBezierCurve3
+ * THREE.LineCurve3
+ * THREE.QuadraticBezierCurve3
+ *
+ * A series of curves can be represented as a THREE.CurvePath.
+ *
+ **/
+
+class Curve {
+
+	constructor() {
+
+		this.type = 'Curve';
+
+		this.arcLengthDivisions = 200;
+
+	}
+
+	// Virtual base class method to overwrite and implement in subclasses
+	//	- t [0 .. 1]
+
+	getPoint( /* t, optionalTarget */ ) {
+
+		console.warn( 'THREE.Curve: .getPoint() not implemented.' );
+		return null;
+
+	}
+
+	// Get point at relative position in curve according to arc length
+	// - u [0 .. 1]
+
+	getPointAt( u, optionalTarget ) {
+
+		const t = this.getUtoTmapping( u );
+		return this.getPoint( t, optionalTarget );
+
+	}
+
+	// Get sequence of points using getPoint( t )
+
+	getPoints( divisions = 5 ) {
+
+		const points = [];
+
+		for ( let d = 0; d <= divisions; d ++ ) {
+
+			points.push( this.getPoint( d / divisions ) );
+
+		}
+
+		return points;
+
+	}
+
+	// Get sequence of points using getPointAt( u )
+
+	getSpacedPoints( divisions = 5 ) {
+
+		const points = [];
+
+		for ( let d = 0; d <= divisions; d ++ ) {
+
+			points.push( this.getPointAt( d / divisions ) );
+
+		}
+
+		return points;
+
+	}
+
+	// Get total curve arc length
+
+	getLength() {
+
+		const lengths = this.getLengths();
+		return lengths[ lengths.length - 1 ];
+
+	}
+
+	// Get list of cumulative segment lengths
+
+	getLengths( divisions = this.arcLengthDivisions ) {
+
+		if ( this.cacheArcLengths &&
+			( this.cacheArcLengths.length === divisions + 1 ) &&
+			! this.needsUpdate ) {
+
+			return this.cacheArcLengths;
+
+		}
+
+		this.needsUpdate = false;
+
+		const cache = [];
+		let current, last = this.getPoint( 0 );
+		let sum = 0;
+
+		cache.push( 0 );
+
+		for ( let p = 1; p <= divisions; p ++ ) {
+
+			current = this.getPoint( p / divisions );
+			sum += current.distanceTo( last );
+			cache.push( sum );
+			last = current;
+
+		}
+
+		this.cacheArcLengths = cache;
+
+		return cache; // { sums: cache, sum: sum }; Sum is in the last element.
+
+	}
+
+	updateArcLengths() {
+
+		this.needsUpdate = true;
+		this.getLengths();
+
+	}
+
+	// Given u ( 0 .. 1 ), get a t to find p. This gives you points which are equidistant
+
+	getUtoTmapping( u, distance ) {
+
+		const arcLengths = this.getLengths();
+
+		let i = 0;
+		const il = arcLengths.length;
+
+		let targetArcLength; // The targeted u distance value to get
+
+		if ( distance ) {
+
+			targetArcLength = distance;
+
+		} else {
+
+			targetArcLength = u * arcLengths[ il - 1 ];
+
+		}
+
+		// binary search for the index with largest value smaller than target u distance
+
+		let low = 0, high = il - 1, comparison;
+
+		while ( low <= high ) {
+
+			i = Math.floor( low + ( high - low ) / 2 ); // less likely to overflow, though probably not issue here, JS doesn't really have integers, all numbers are floats
+
+			comparison = arcLengths[ i ] - targetArcLength;
+
+			if ( comparison < 0 ) {
+
+				low = i + 1;
+
+			} else if ( comparison > 0 ) {
+
+				high = i - 1;
+
+			} else {
+
+				high = i;
+				break;
+
+				// DONE
+
+			}
+
+		}
+
+		i = high;
+
+		if ( arcLengths[ i ] === targetArcLength ) {
+
+			return i / ( il - 1 );
+
+		}
+
+		// we could get finer grain at lengths, or use simple interpolation between two points
+
+		const lengthBefore = arcLengths[ i ];
+		const lengthAfter = arcLengths[ i + 1 ];
+
+		const segmentLength = lengthAfter - lengthBefore;
+
+		// determine where we are between the 'before' and 'after' points
+
+		const segmentFraction = ( targetArcLength - lengthBefore ) / segmentLength;
+
+		// add that fractional amount to t
+
+		const t = ( i + segmentFraction ) / ( il - 1 );
+
+		return t;
+
+	}
+
+	// Returns a unit vector tangent at t
+	// In case any sub curve does not implement its tangent derivation,
+	// 2 points a small delta apart will be used to find its gradient
+	// which seems to give a reasonable approximation
+
+	getTangent( t, optionalTarget ) {
+
+		const delta = 0.0001;
+		let t1 = t - delta;
+		let t2 = t + delta;
+
+		// Capping in case of danger
+
+		if ( t1 < 0 ) t1 = 0;
+		if ( t2 > 1 ) t2 = 1;
+
+		const pt1 = this.getPoint( t1 );
+		const pt2 = this.getPoint( t2 );
+
+		const tangent = optionalTarget || ( ( pt1.isVector2 ) ? new Vector2() : new Vector3() );
+
+		tangent.copy( pt2 ).sub( pt1 ).normalize();
+
+		return tangent;
+
+	}
+
+	getTangentAt( u, optionalTarget ) {
+
+		const t = this.getUtoTmapping( u );
+		return this.getTangent( t, optionalTarget );
+
+	}
+
+	computeFrenetFrames( segments, closed ) {
+
+		// see http://www.cs.indiana.edu/pub/techreports/TR425.pdf
+
+		const normal = new Vector3();
+
+		const tangents = [];
+		const normals = [];
+		const binormals = [];
+
+		const vec = new Vector3();
+		const mat = new Matrix4();
+
+		// compute the tangent vectors for each segment on the curve
+
+		for ( let i = 0; i <= segments; i ++ ) {
+
+			const u = i / segments;
+
+			tangents[ i ] = this.getTangentAt( u, new Vector3() );
+
+		}
+
+		// select an initial normal vector perpendicular to the first tangent vector,
+		// and in the direction of the minimum tangent xyz component
+
+		normals[ 0 ] = new Vector3();
+		binormals[ 0 ] = new Vector3();
+		let min = Number.MAX_VALUE;
+		const tx = Math.abs( tangents[ 0 ].x );
+		const ty = Math.abs( tangents[ 0 ].y );
+		const tz = Math.abs( tangents[ 0 ].z );
+
+		if ( tx <= min ) {
+
+			min = tx;
+			normal.set( 1, 0, 0 );
+
+		}
+
+		if ( ty <= min ) {
+
+			min = ty;
+			normal.set( 0, 1, 0 );
+
+		}
+
+		if ( tz <= min ) {
+
+			normal.set( 0, 0, 1 );
+
+		}
+
+		vec.crossVectors( tangents[ 0 ], normal ).normalize();
+
+		normals[ 0 ].crossVectors( tangents[ 0 ], vec );
+		binormals[ 0 ].crossVectors( tangents[ 0 ], normals[ 0 ] );
+
+
+		// compute the slowly-varying normal and binormal vectors for each segment on the curve
+
+		for ( let i = 1; i <= segments; i ++ ) {
+
+			normals[ i ] = normals[ i - 1 ].clone();
+
+			binormals[ i ] = binormals[ i - 1 ].clone();
+
+			vec.crossVectors( tangents[ i - 1 ], tangents[ i ] );
+
+			if ( vec.length() > Number.EPSILON ) {
+
+				vec.normalize();
+
+				const theta = Math.acos( clamp( tangents[ i - 1 ].dot( tangents[ i ] ), - 1, 1 ) ); // clamp for floating pt errors
+
+				normals[ i ].applyMatrix4( mat.makeRotationAxis( vec, theta ) );
+
+			}
+
+			binormals[ i ].crossVectors( tangents[ i ], normals[ i ] );
+
+		}
+
+		// if the curve is closed, postprocess the vectors so the first and last normal vectors are the same
+
+		if ( closed === true ) {
+
+			let theta = Math.acos( clamp( normals[ 0 ].dot( normals[ segments ] ), - 1, 1 ) );
+			theta /= segments;
+
+			if ( tangents[ 0 ].dot( vec.crossVectors( normals[ 0 ], normals[ segments ] ) ) > 0 ) {
+
+				theta = - theta;
+
+			}
+
+			for ( let i = 1; i <= segments; i ++ ) {
+
+				// twist a little...
+				normals[ i ].applyMatrix4( mat.makeRotationAxis( tangents[ i ], theta * i ) );
+				binormals[ i ].crossVectors( tangents[ i ], normals[ i ] );
+
+			}
+
+		}
+
+		return {
+			tangents: tangents,
+			normals: normals,
+			binormals: binormals
+		};
+
+	}
+
+	clone() {
+
+		return new this.constructor().copy( this );
+
+	}
+
+	copy( source ) {
+
+		this.arcLengthDivisions = source.arcLengthDivisions;
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = {
+			metadata: {
+				version: 4.6,
+				type: 'Curve',
+				generator: 'Curve.toJSON'
+			}
+		};
+
+		data.arcLengthDivisions = this.arcLengthDivisions;
+		data.type = this.type;
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		this.arcLengthDivisions = json.arcLengthDivisions;
+
+		return this;
+
+	}
+
+}
+
+class EllipseCurve extends Curve {
+
+	constructor( aX = 0, aY = 0, xRadius = 1, yRadius = 1, aStartAngle = 0, aEndAngle = Math.PI * 2, aClockwise = false, aRotation = 0 ) {
+
+		super();
+
+		this.isEllipseCurve = true;
+
+		this.type = 'EllipseCurve';
+
+		this.aX = aX;
+		this.aY = aY;
+
+		this.xRadius = xRadius;
+		this.yRadius = yRadius;
+
+		this.aStartAngle = aStartAngle;
+		this.aEndAngle = aEndAngle;
+
+		this.aClockwise = aClockwise;
+
+		this.aRotation = aRotation;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector2() ) {
+
+		const point = optionalTarget;
+
+		const twoPi = Math.PI * 2;
+		let deltaAngle = this.aEndAngle - this.aStartAngle;
+		const samePoints = Math.abs( deltaAngle ) < Number.EPSILON;
+
+		// ensures that deltaAngle is 0 .. 2 PI
+		while ( deltaAngle < 0 ) deltaAngle += twoPi;
+		while ( deltaAngle > twoPi ) deltaAngle -= twoPi;
+
+		if ( deltaAngle < Number.EPSILON ) {
+
+			if ( samePoints ) {
+
+				deltaAngle = 0;
+
+			} else {
+
+				deltaAngle = twoPi;
+
+			}
+
+		}
+
+		if ( this.aClockwise === true && ! samePoints ) {
+
+			if ( deltaAngle === twoPi ) {
+
+				deltaAngle = - twoPi;
+
+			} else {
+
+				deltaAngle = deltaAngle - twoPi;
+
+			}
+
+		}
+
+		const angle = this.aStartAngle + t * deltaAngle;
+		let x = this.aX + this.xRadius * Math.cos( angle );
+		let y = this.aY + this.yRadius * Math.sin( angle );
+
+		if ( this.aRotation !== 0 ) {
+
+			const cos = Math.cos( this.aRotation );
+			const sin = Math.sin( this.aRotation );
+
+			const tx = x - this.aX;
+			const ty = y - this.aY;
+
+			// Rotate the point about the center of the ellipse.
+			x = tx * cos - ty * sin + this.aX;
+			y = tx * sin + ty * cos + this.aY;
+
+		}
+
+		return point.set( x, y );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.aX = source.aX;
+		this.aY = source.aY;
+
+		this.xRadius = source.xRadius;
+		this.yRadius = source.yRadius;
+
+		this.aStartAngle = source.aStartAngle;
+		this.aEndAngle = source.aEndAngle;
+
+		this.aClockwise = source.aClockwise;
+
+		this.aRotation = source.aRotation;
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.aX = this.aX;
+		data.aY = this.aY;
+
+		data.xRadius = this.xRadius;
+		data.yRadius = this.yRadius;
+
+		data.aStartAngle = this.aStartAngle;
+		data.aEndAngle = this.aEndAngle;
+
+		data.aClockwise = this.aClockwise;
+
+		data.aRotation = this.aRotation;
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.aX = json.aX;
+		this.aY = json.aY;
+
+		this.xRadius = json.xRadius;
+		this.yRadius = json.yRadius;
+
+		this.aStartAngle = json.aStartAngle;
+		this.aEndAngle = json.aEndAngle;
+
+		this.aClockwise = json.aClockwise;
+
+		this.aRotation = json.aRotation;
+
+		return this;
+
+	}
+
+}
+
+class ArcCurve extends EllipseCurve {
+
+	constructor( aX, aY, aRadius, aStartAngle, aEndAngle, aClockwise ) {
+
+		super( aX, aY, aRadius, aRadius, aStartAngle, aEndAngle, aClockwise );
+
+		this.isArcCurve = true;
+
+		this.type = 'ArcCurve';
+
+	}
+
+}
+
+/**
+ * Centripetal CatmullRom Curve - which is useful for avoiding
+ * cusps and self-intersections in non-uniform catmull rom curves.
+ * http://www.cemyuksel.com/research/catmullrom_param/catmullrom.pdf
+ *
+ * curve.type accepts centripetal(default), chordal and catmullrom
+ * curve.tension is used for catmullrom which defaults to 0.5
+ */
+
+
+/*
+Based on an optimized c++ solution in
+ - http://stackoverflow.com/questions/9489736/catmull-rom-curve-with-no-cusps-and-no-self-intersections/
+ - http://ideone.com/NoEbVM
+
+This CubicPoly class could be used for reusing some variables and calculations,
+but for three.js curve use, it could be possible inlined and flatten into a single function call
+which can be placed in CurveUtils.
+*/
+
+function CubicPoly() {
+
+	let c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+
+	/*
+	 * Compute coefficients for a cubic polynomial
+	 *   p(s) = c0 + c1*s + c2*s^2 + c3*s^3
+	 * such that
+	 *   p(0) = x0, p(1) = x1
+	 *  and
+	 *   p'(0) = t0, p'(1) = t1.
+	 */
+	function init( x0, x1, t0, t1 ) {
+
+		c0 = x0;
+		c1 = t0;
+		c2 = - 3 * x0 + 3 * x1 - 2 * t0 - t1;
+		c3 = 2 * x0 - 2 * x1 + t0 + t1;
+
+	}
+
+	return {
+
+		initCatmullRom: function ( x0, x1, x2, x3, tension ) {
+
+			init( x1, x2, tension * ( x2 - x0 ), tension * ( x3 - x1 ) );
+
+		},
+
+		initNonuniformCatmullRom: function ( x0, x1, x2, x3, dt0, dt1, dt2 ) {
+
+			// compute tangents when parameterized in [t1,t2]
+			let t1 = ( x1 - x0 ) / dt0 - ( x2 - x0 ) / ( dt0 + dt1 ) + ( x2 - x1 ) / dt1;
+			let t2 = ( x2 - x1 ) / dt1 - ( x3 - x1 ) / ( dt1 + dt2 ) + ( x3 - x2 ) / dt2;
+
+			// rescale tangents for parametrization in [0,1]
+			t1 *= dt1;
+			t2 *= dt1;
+
+			init( x1, x2, t1, t2 );
+
+		},
+
+		calc: function ( t ) {
+
+			const t2 = t * t;
+			const t3 = t2 * t;
+			return c0 + c1 * t + c2 * t2 + c3 * t3;
+
+		}
+
+	};
+
+}
+
+//
+
+const tmp = /*@__PURE__*/ new Vector3();
+const px = /*@__PURE__*/ new CubicPoly();
+const py = /*@__PURE__*/ new CubicPoly();
+const pz = /*@__PURE__*/ new CubicPoly();
+
+class CatmullRomCurve3 extends Curve {
+
+	constructor( points = [], closed = false, curveType = 'centripetal', tension = 0.5 ) {
+
+		super();
+
+		this.isCatmullRomCurve3 = true;
+
+		this.type = 'CatmullRomCurve3';
+
+		this.points = points;
+		this.closed = closed;
+		this.curveType = curveType;
+		this.tension = tension;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector3() ) {
+
+		const point = optionalTarget;
+
+		const points = this.points;
+		const l = points.length;
+
+		const p = ( l - ( this.closed ? 0 : 1 ) ) * t;
+		let intPoint = Math.floor( p );
+		let weight = p - intPoint;
+
+		if ( this.closed ) {
+
+			intPoint += intPoint > 0 ? 0 : ( Math.floor( Math.abs( intPoint ) / l ) + 1 ) * l;
+
+		} else if ( weight === 0 && intPoint === l - 1 ) {
+
+			intPoint = l - 2;
+			weight = 1;
+
+		}
+
+		let p0, p3; // 4 points (p1 & p2 defined below)
+
+		if ( this.closed || intPoint > 0 ) {
+
+			p0 = points[ ( intPoint - 1 ) % l ];
+
+		} else {
+
+			// extrapolate first point
+			tmp.subVectors( points[ 0 ], points[ 1 ] ).add( points[ 0 ] );
+			p0 = tmp;
+
+		}
+
+		const p1 = points[ intPoint % l ];
+		const p2 = points[ ( intPoint + 1 ) % l ];
+
+		if ( this.closed || intPoint + 2 < l ) {
+
+			p3 = points[ ( intPoint + 2 ) % l ];
+
+		} else {
+
+			// extrapolate last point
+			tmp.subVectors( points[ l - 1 ], points[ l - 2 ] ).add( points[ l - 1 ] );
+			p3 = tmp;
+
+		}
+
+		if ( this.curveType === 'centripetal' || this.curveType === 'chordal' ) {
+
+			// init Centripetal / Chordal Catmull-Rom
+			const pow = this.curveType === 'chordal' ? 0.5 : 0.25;
+			let dt0 = Math.pow( p0.distanceToSquared( p1 ), pow );
+			let dt1 = Math.pow( p1.distanceToSquared( p2 ), pow );
+			let dt2 = Math.pow( p2.distanceToSquared( p3 ), pow );
+
+			// safety check for repeated points
+			if ( dt1 < 1e-4 ) dt1 = 1.0;
+			if ( dt0 < 1e-4 ) dt0 = dt1;
+			if ( dt2 < 1e-4 ) dt2 = dt1;
+
+			px.initNonuniformCatmullRom( p0.x, p1.x, p2.x, p3.x, dt0, dt1, dt2 );
+			py.initNonuniformCatmullRom( p0.y, p1.y, p2.y, p3.y, dt0, dt1, dt2 );
+			pz.initNonuniformCatmullRom( p0.z, p1.z, p2.z, p3.z, dt0, dt1, dt2 );
+
+		} else if ( this.curveType === 'catmullrom' ) {
+
+			px.initCatmullRom( p0.x, p1.x, p2.x, p3.x, this.tension );
+			py.initCatmullRom( p0.y, p1.y, p2.y, p3.y, this.tension );
+			pz.initCatmullRom( p0.z, p1.z, p2.z, p3.z, this.tension );
+
+		}
+
+		point.set(
+			px.calc( weight ),
+			py.calc( weight ),
+			pz.calc( weight )
+		);
+
+		return point;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.points = [];
+
+		for ( let i = 0, l = source.points.length; i < l; i ++ ) {
+
+			const point = source.points[ i ];
+
+			this.points.push( point.clone() );
+
+		}
+
+		this.closed = source.closed;
+		this.curveType = source.curveType;
+		this.tension = source.tension;
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.points = [];
+
+		for ( let i = 0, l = this.points.length; i < l; i ++ ) {
+
+			const point = this.points[ i ];
+			data.points.push( point.toArray() );
+
+		}
+
+		data.closed = this.closed;
+		data.curveType = this.curveType;
+		data.tension = this.tension;
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.points = [];
+
+		for ( let i = 0, l = json.points.length; i < l; i ++ ) {
+
+			const point = json.points[ i ];
+			this.points.push( new Vector3().fromArray( point ) );
+
+		}
+
+		this.closed = json.closed;
+		this.curveType = json.curveType;
+		this.tension = json.tension;
+
+		return this;
+
+	}
+
+}
+
+/**
+ * Bezier Curves formulas obtained from
+ * https://en.wikipedia.org/wiki/B%C3%A9zier_curve
+ */
+
+function CatmullRom( t, p0, p1, p2, p3 ) {
+
+	const v0 = ( p2 - p0 ) * 0.5;
+	const v1 = ( p3 - p1 ) * 0.5;
+	const t2 = t * t;
+	const t3 = t * t2;
+	return ( 2 * p1 - 2 * p2 + v0 + v1 ) * t3 + ( - 3 * p1 + 3 * p2 - 2 * v0 - v1 ) * t2 + v0 * t + p1;
+
+}
+
+//
+
+function QuadraticBezierP0( t, p ) {
+
+	const k = 1 - t;
+	return k * k * p;
+
+}
+
+function QuadraticBezierP1( t, p ) {
+
+	return 2 * ( 1 - t ) * t * p;
+
+}
+
+function QuadraticBezierP2( t, p ) {
+
+	return t * t * p;
+
+}
+
+function QuadraticBezier( t, p0, p1, p2 ) {
+
+	return QuadraticBezierP0( t, p0 ) + QuadraticBezierP1( t, p1 ) +
+		QuadraticBezierP2( t, p2 );
+
+}
+
+//
+
+function CubicBezierP0( t, p ) {
+
+	const k = 1 - t;
+	return k * k * k * p;
+
+}
+
+function CubicBezierP1( t, p ) {
+
+	const k = 1 - t;
+	return 3 * k * k * t * p;
+
+}
+
+function CubicBezierP2( t, p ) {
+
+	return 3 * ( 1 - t ) * t * t * p;
+
+}
+
+function CubicBezierP3( t, p ) {
+
+	return t * t * t * p;
+
+}
+
+function CubicBezier( t, p0, p1, p2, p3 ) {
+
+	return CubicBezierP0( t, p0 ) + CubicBezierP1( t, p1 ) + CubicBezierP2( t, p2 ) +
+		CubicBezierP3( t, p3 );
+
+}
+
+class CubicBezierCurve extends Curve {
+
+	constructor( v0 = new Vector2(), v1 = new Vector2(), v2 = new Vector2(), v3 = new Vector2() ) {
+
+		super();
+
+		this.isCubicBezierCurve = true;
+
+		this.type = 'CubicBezierCurve';
+
+		this.v0 = v0;
+		this.v1 = v1;
+		this.v2 = v2;
+		this.v3 = v3;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector2() ) {
+
+		const point = optionalTarget;
+
+		const v0 = this.v0, v1 = this.v1, v2 = this.v2, v3 = this.v3;
+
+		point.set(
+			CubicBezier( t, v0.x, v1.x, v2.x, v3.x ),
+			CubicBezier( t, v0.y, v1.y, v2.y, v3.y )
+		);
+
+		return point;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.v0.copy( source.v0 );
+		this.v1.copy( source.v1 );
+		this.v2.copy( source.v2 );
+		this.v3.copy( source.v3 );
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.v0 = this.v0.toArray();
+		data.v1 = this.v1.toArray();
+		data.v2 = this.v2.toArray();
+		data.v3 = this.v3.toArray();
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.v0.fromArray( json.v0 );
+		this.v1.fromArray( json.v1 );
+		this.v2.fromArray( json.v2 );
+		this.v3.fromArray( json.v3 );
+
+		return this;
+
+	}
+
+}
+
+class CubicBezierCurve3 extends Curve {
+
+	constructor( v0 = new Vector3(), v1 = new Vector3(), v2 = new Vector3(), v3 = new Vector3() ) {
+
+		super();
+
+		this.isCubicBezierCurve3 = true;
+
+		this.type = 'CubicBezierCurve3';
+
+		this.v0 = v0;
+		this.v1 = v1;
+		this.v2 = v2;
+		this.v3 = v3;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector3() ) {
+
+		const point = optionalTarget;
+
+		const v0 = this.v0, v1 = this.v1, v2 = this.v2, v3 = this.v3;
+
+		point.set(
+			CubicBezier( t, v0.x, v1.x, v2.x, v3.x ),
+			CubicBezier( t, v0.y, v1.y, v2.y, v3.y ),
+			CubicBezier( t, v0.z, v1.z, v2.z, v3.z )
+		);
+
+		return point;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.v0.copy( source.v0 );
+		this.v1.copy( source.v1 );
+		this.v2.copy( source.v2 );
+		this.v3.copy( source.v3 );
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.v0 = this.v0.toArray();
+		data.v1 = this.v1.toArray();
+		data.v2 = this.v2.toArray();
+		data.v3 = this.v3.toArray();
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.v0.fromArray( json.v0 );
+		this.v1.fromArray( json.v1 );
+		this.v2.fromArray( json.v2 );
+		this.v3.fromArray( json.v3 );
+
+		return this;
+
+	}
+
+}
+
+class LineCurve extends Curve {
+
+	constructor( v1 = new Vector2(), v2 = new Vector2() ) {
+
+		super();
+
+		this.isLineCurve = true;
+
+		this.type = 'LineCurve';
+
+		this.v1 = v1;
+		this.v2 = v2;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector2() ) {
+
+		const point = optionalTarget;
+
+		if ( t === 1 ) {
+
+			point.copy( this.v2 );
+
+		} else {
+
+			point.copy( this.v2 ).sub( this.v1 );
+			point.multiplyScalar( t ).add( this.v1 );
+
+		}
+
+		return point;
+
+	}
+
+	// Line curve is linear, so we can overwrite default getPointAt
+	getPointAt( u, optionalTarget ) {
+
+		return this.getPoint( u, optionalTarget );
+
+	}
+
+	getTangent( t, optionalTarget = new Vector2() ) {
+
+		return optionalTarget.subVectors( this.v2, this.v1 ).normalize();
+
+	}
+
+	getTangentAt( u, optionalTarget ) {
+
+		return this.getTangent( u, optionalTarget );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.v1.copy( source.v1 );
+		this.v2.copy( source.v2 );
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.v1 = this.v1.toArray();
+		data.v2 = this.v2.toArray();
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.v1.fromArray( json.v1 );
+		this.v2.fromArray( json.v2 );
+
+		return this;
+
+	}
+
+}
+
+class LineCurve3 extends Curve {
+
+	constructor( v1 = new Vector3(), v2 = new Vector3() ) {
+
+		super();
+
+		this.isLineCurve3 = true;
+
+		this.type = 'LineCurve3';
+
+		this.v1 = v1;
+		this.v2 = v2;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector3() ) {
+
+		const point = optionalTarget;
+
+		if ( t === 1 ) {
+
+			point.copy( this.v2 );
+
+		} else {
+
+			point.copy( this.v2 ).sub( this.v1 );
+			point.multiplyScalar( t ).add( this.v1 );
+
+		}
+
+		return point;
+
+	}
+
+	// Line curve is linear, so we can overwrite default getPointAt
+	getPointAt( u, optionalTarget ) {
+
+		return this.getPoint( u, optionalTarget );
+
+	}
+
+	getTangent( t, optionalTarget = new Vector3() ) {
+
+		return optionalTarget.subVectors( this.v2, this.v1 ).normalize();
+
+	}
+
+	getTangentAt( u, optionalTarget ) {
+
+		return this.getTangent( u, optionalTarget );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.v1.copy( source.v1 );
+		this.v2.copy( source.v2 );
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.v1 = this.v1.toArray();
+		data.v2 = this.v2.toArray();
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.v1.fromArray( json.v1 );
+		this.v2.fromArray( json.v2 );
+
+		return this;
+
+	}
+
+}
+
+class QuadraticBezierCurve extends Curve {
+
+	constructor( v0 = new Vector2(), v1 = new Vector2(), v2 = new Vector2() ) {
+
+		super();
+
+		this.isQuadraticBezierCurve = true;
+
+		this.type = 'QuadraticBezierCurve';
+
+		this.v0 = v0;
+		this.v1 = v1;
+		this.v2 = v2;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector2() ) {
+
+		const point = optionalTarget;
+
+		const v0 = this.v0, v1 = this.v1, v2 = this.v2;
+
+		point.set(
+			QuadraticBezier( t, v0.x, v1.x, v2.x ),
+			QuadraticBezier( t, v0.y, v1.y, v2.y )
+		);
+
+		return point;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.v0.copy( source.v0 );
+		this.v1.copy( source.v1 );
+		this.v2.copy( source.v2 );
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.v0 = this.v0.toArray();
+		data.v1 = this.v1.toArray();
+		data.v2 = this.v2.toArray();
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.v0.fromArray( json.v0 );
+		this.v1.fromArray( json.v1 );
+		this.v2.fromArray( json.v2 );
+
+		return this;
+
+	}
+
+}
+
+class QuadraticBezierCurve3 extends Curve {
+
+	constructor( v0 = new Vector3(), v1 = new Vector3(), v2 = new Vector3() ) {
+
+		super();
+
+		this.isQuadraticBezierCurve3 = true;
+
+		this.type = 'QuadraticBezierCurve3';
+
+		this.v0 = v0;
+		this.v1 = v1;
+		this.v2 = v2;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector3() ) {
+
+		const point = optionalTarget;
+
+		const v0 = this.v0, v1 = this.v1, v2 = this.v2;
+
+		point.set(
+			QuadraticBezier( t, v0.x, v1.x, v2.x ),
+			QuadraticBezier( t, v0.y, v1.y, v2.y ),
+			QuadraticBezier( t, v0.z, v1.z, v2.z )
+		);
+
+		return point;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.v0.copy( source.v0 );
+		this.v1.copy( source.v1 );
+		this.v2.copy( source.v2 );
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.v0 = this.v0.toArray();
+		data.v1 = this.v1.toArray();
+		data.v2 = this.v2.toArray();
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.v0.fromArray( json.v0 );
+		this.v1.fromArray( json.v1 );
+		this.v2.fromArray( json.v2 );
+
+		return this;
+
+	}
+
+}
+
+class SplineCurve extends Curve {
+
+	constructor( points = [] ) {
+
+		super();
+
+		this.isSplineCurve = true;
+
+		this.type = 'SplineCurve';
+
+		this.points = points;
+
+	}
+
+	getPoint( t, optionalTarget = new Vector2() ) {
+
+		const point = optionalTarget;
+
+		const points = this.points;
+		const p = ( points.length - 1 ) * t;
+
+		const intPoint = Math.floor( p );
+		const weight = p - intPoint;
+
+		const p0 = points[ intPoint === 0 ? intPoint : intPoint - 1 ];
+		const p1 = points[ intPoint ];
+		const p2 = points[ intPoint > points.length - 2 ? points.length - 1 : intPoint + 1 ];
+		const p3 = points[ intPoint > points.length - 3 ? points.length - 1 : intPoint + 2 ];
+
+		point.set(
+			CatmullRom( weight, p0.x, p1.x, p2.x, p3.x ),
+			CatmullRom( weight, p0.y, p1.y, p2.y, p3.y )
+		);
+
+		return point;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.points = [];
+
+		for ( let i = 0, l = source.points.length; i < l; i ++ ) {
+
+			const point = source.points[ i ];
+
+			this.points.push( point.clone() );
+
+		}
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.points = [];
+
+		for ( let i = 0, l = this.points.length; i < l; i ++ ) {
+
+			const point = this.points[ i ];
+			data.points.push( point.toArray() );
+
+		}
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.points = [];
+
+		for ( let i = 0, l = json.points.length; i < l; i ++ ) {
+
+			const point = json.points[ i ];
+			this.points.push( new Vector2().fromArray( point ) );
+
+		}
+
+		return this;
+
+	}
+
+}
+
+var Curves = /*#__PURE__*/Object.freeze({
+	__proto__: null,
+	ArcCurve: ArcCurve,
+	CatmullRomCurve3: CatmullRomCurve3,
+	CubicBezierCurve: CubicBezierCurve,
+	CubicBezierCurve3: CubicBezierCurve3,
+	EllipseCurve: EllipseCurve,
+	LineCurve: LineCurve,
+	LineCurve3: LineCurve3,
+	QuadraticBezierCurve: QuadraticBezierCurve,
+	QuadraticBezierCurve3: QuadraticBezierCurve3,
+	SplineCurve: SplineCurve
+});
+
+/**************************************************************
+ *	Curved Path - a curve path is simply a array of connected
+ *  curves, but retains the api of a curve
+ **************************************************************/
+
+class CurvePath extends Curve {
+
+	constructor() {
+
+		super();
+
+		this.type = 'CurvePath';
+
+		this.curves = [];
+		this.autoClose = false; // Automatically closes the path
+
+	}
+
+	add( curve ) {
+
+		this.curves.push( curve );
+
+	}
+
+	closePath() {
+
+		// Add a line curve if start and end of lines are not connected
+		const startPoint = this.curves[ 0 ].getPoint( 0 );
+		const endPoint = this.curves[ this.curves.length - 1 ].getPoint( 1 );
+
+		if ( ! startPoint.equals( endPoint ) ) {
+
+			const lineType = ( startPoint.isVector2 === true ) ? 'LineCurve' : 'LineCurve3';
+			this.curves.push( new Curves[ lineType ]( endPoint, startPoint ) );
+
+		}
+
+		return this;
+
+	}
+
+	// To get accurate point with reference to
+	// entire path distance at time t,
+	// following has to be done:
+
+	// 1. Length of each sub path have to be known
+	// 2. Locate and identify type of curve
+	// 3. Get t for the curve
+	// 4. Return curve.getPointAt(t')
+
+	getPoint( t, optionalTarget ) {
+
+		const d = t * this.getLength();
+		const curveLengths = this.getCurveLengths();
+		let i = 0;
+
+		// To think about boundaries points.
+
+		while ( i < curveLengths.length ) {
+
+			if ( curveLengths[ i ] >= d ) {
+
+				const diff = curveLengths[ i ] - d;
+				const curve = this.curves[ i ];
+
+				const segmentLength = curve.getLength();
+				const u = segmentLength === 0 ? 0 : 1 - diff / segmentLength;
+
+				return curve.getPointAt( u, optionalTarget );
+
+			}
+
+			i ++;
+
+		}
+
+		return null;
+
+		// loop where sum != 0, sum > d , sum+1 <d
+
+	}
+
+	// We cannot use the default THREE.Curve getPoint() with getLength() because in
+	// THREE.Curve, getLength() depends on getPoint() but in THREE.CurvePath
+	// getPoint() depends on getLength
+
+	getLength() {
+
+		const lens = this.getCurveLengths();
+		return lens[ lens.length - 1 ];
+
+	}
+
+	// cacheLengths must be recalculated.
+	updateArcLengths() {
+
+		this.needsUpdate = true;
+		this.cacheLengths = null;
+		this.getCurveLengths();
+
+	}
+
+	// Compute lengths and cache them
+	// We cannot overwrite getLengths() because UtoT mapping uses it.
+
+	getCurveLengths() {
+
+		// We use cache values if curves and cache array are same length
+
+		if ( this.cacheLengths && this.cacheLengths.length === this.curves.length ) {
+
+			return this.cacheLengths;
+
+		}
+
+		// Get length of sub-curve
+		// Push sums into cached array
+
+		const lengths = [];
+		let sums = 0;
+
+		for ( let i = 0, l = this.curves.length; i < l; i ++ ) {
+
+			sums += this.curves[ i ].getLength();
+			lengths.push( sums );
+
+		}
+
+		this.cacheLengths = lengths;
+
+		return lengths;
+
+	}
+
+	getSpacedPoints( divisions = 40 ) {
+
+		const points = [];
+
+		for ( let i = 0; i <= divisions; i ++ ) {
+
+			points.push( this.getPoint( i / divisions ) );
+
+		}
+
+		if ( this.autoClose ) {
+
+			points.push( points[ 0 ] );
+
+		}
+
+		return points;
+
+	}
+
+	getPoints( divisions = 12 ) {
+
+		const points = [];
+		let last;
+
+		for ( let i = 0, curves = this.curves; i < curves.length; i ++ ) {
+
+			const curve = curves[ i ];
+			const resolution = curve.isEllipseCurve ? divisions * 2
+				: ( curve.isLineCurve || curve.isLineCurve3 ) ? 1
+					: curve.isSplineCurve ? divisions * curve.points.length
+						: divisions;
+
+			const pts = curve.getPoints( resolution );
+
+			for ( let j = 0; j < pts.length; j ++ ) {
+
+				const point = pts[ j ];
+
+				if ( last && last.equals( point ) ) continue; // ensures no consecutive points are duplicates
+
+				points.push( point );
+				last = point;
+
+			}
+
+		}
+
+		if ( this.autoClose && points.length > 1 && ! points[ points.length - 1 ].equals( points[ 0 ] ) ) {
+
+			points.push( points[ 0 ] );
+
+		}
+
+		return points;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.curves = [];
+
+		for ( let i = 0, l = source.curves.length; i < l; i ++ ) {
+
+			const curve = source.curves[ i ];
+
+			this.curves.push( curve.clone() );
+
+		}
+
+		this.autoClose = source.autoClose;
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.autoClose = this.autoClose;
+		data.curves = [];
+
+		for ( let i = 0, l = this.curves.length; i < l; i ++ ) {
+
+			const curve = this.curves[ i ];
+			data.curves.push( curve.toJSON() );
+
+		}
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.autoClose = json.autoClose;
+		this.curves = [];
+
+		for ( let i = 0, l = json.curves.length; i < l; i ++ ) {
+
+			const curve = json.curves[ i ];
+			this.curves.push( new Curves[ curve.type ]().fromJSON( curve ) );
+
+		}
+
+		return this;
+
+	}
+
+}
+
+class Path extends CurvePath {
+
+	constructor( points ) {
+
+		super();
+
+		this.type = 'Path';
+
+		this.currentPoint = new Vector2();
+
+		if ( points ) {
+
+			this.setFromPoints( points );
+
+		}
+
+	}
+
+	setFromPoints( points ) {
+
+		this.moveTo( points[ 0 ].x, points[ 0 ].y );
+
+		for ( let i = 1, l = points.length; i < l; i ++ ) {
+
+			this.lineTo( points[ i ].x, points[ i ].y );
+
+		}
+
+		return this;
+
+	}
+
+	moveTo( x, y ) {
+
+		this.currentPoint.set( x, y ); // TODO consider referencing vectors instead of copying?
+
+		return this;
+
+	}
+
+	lineTo( x, y ) {
+
+		const curve = new LineCurve( this.currentPoint.clone(), new Vector2( x, y ) );
+		this.curves.push( curve );
+
+		this.currentPoint.set( x, y );
+
+		return this;
+
+	}
+
+	quadraticCurveTo( aCPx, aCPy, aX, aY ) {
+
+		const curve = new QuadraticBezierCurve(
+			this.currentPoint.clone(),
+			new Vector2( aCPx, aCPy ),
+			new Vector2( aX, aY )
+		);
+
+		this.curves.push( curve );
+
+		this.currentPoint.set( aX, aY );
+
+		return this;
+
+	}
+
+	bezierCurveTo( aCP1x, aCP1y, aCP2x, aCP2y, aX, aY ) {
+
+		const curve = new CubicBezierCurve(
+			this.currentPoint.clone(),
+			new Vector2( aCP1x, aCP1y ),
+			new Vector2( aCP2x, aCP2y ),
+			new Vector2( aX, aY )
+		);
+
+		this.curves.push( curve );
+
+		this.currentPoint.set( aX, aY );
+
+		return this;
+
+	}
+
+	splineThru( pts /*Array of Vector*/ ) {
+
+		const npts = [ this.currentPoint.clone() ].concat( pts );
+
+		const curve = new SplineCurve( npts );
+		this.curves.push( curve );
+
+		this.currentPoint.copy( pts[ pts.length - 1 ] );
+
+		return this;
+
+	}
+
+	arc( aX, aY, aRadius, aStartAngle, aEndAngle, aClockwise ) {
+
+		const x0 = this.currentPoint.x;
+		const y0 = this.currentPoint.y;
+
+		this.absarc( aX + x0, aY + y0, aRadius,
+			aStartAngle, aEndAngle, aClockwise );
+
+		return this;
+
+	}
+
+	absarc( aX, aY, aRadius, aStartAngle, aEndAngle, aClockwise ) {
+
+		this.absellipse( aX, aY, aRadius, aRadius, aStartAngle, aEndAngle, aClockwise );
+
+		return this;
+
+	}
+
+	ellipse( aX, aY, xRadius, yRadius, aStartAngle, aEndAngle, aClockwise, aRotation ) {
+
+		const x0 = this.currentPoint.x;
+		const y0 = this.currentPoint.y;
+
+		this.absellipse( aX + x0, aY + y0, xRadius, yRadius, aStartAngle, aEndAngle, aClockwise, aRotation );
+
+		return this;
+
+	}
+
+	absellipse( aX, aY, xRadius, yRadius, aStartAngle, aEndAngle, aClockwise, aRotation ) {
+
+		const curve = new EllipseCurve( aX, aY, xRadius, yRadius, aStartAngle, aEndAngle, aClockwise, aRotation );
+
+		if ( this.curves.length > 0 ) {
+
+			// if a previous curve is present, attempt to join
+			const firstPoint = curve.getPoint( 0 );
+
+			if ( ! firstPoint.equals( this.currentPoint ) ) {
+
+				this.lineTo( firstPoint.x, firstPoint.y );
+
+			}
+
+		}
+
+		this.curves.push( curve );
+
+		const lastPoint = curve.getPoint( 1 );
+		this.currentPoint.copy( lastPoint );
+
+		return this;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.currentPoint.copy( source.currentPoint );
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.currentPoint = this.currentPoint.toArray();
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.currentPoint.fromArray( json.currentPoint );
+
+		return this;
+
+	}
+
+}
+
+class LatheGeometry extends BufferGeometry {
+
+	constructor( points = [ new Vector2( 0, - 0.5 ), new Vector2( 0.5, 0 ), new Vector2( 0, 0.5 ) ], segments = 12, phiStart = 0, phiLength = Math.PI * 2 ) {
+
+		super();
+
+		this.type = 'LatheGeometry';
+
+		this.parameters = {
+			points: points,
+			segments: segments,
+			phiStart: phiStart,
+			phiLength: phiLength
+		};
+
+		segments = Math.floor( segments );
+
+		// clamp phiLength so it's in range of [ 0, 2PI ]
+
+		phiLength = clamp( phiLength, 0, Math.PI * 2 );
+
+		// buffers
+
+		const indices = [];
+		const vertices = [];
+		const uvs = [];
+		const initNormals = [];
+		const normals = [];
+
+		// helper variables
+
+		const inverseSegments = 1.0 / segments;
+		const vertex = new Vector3();
+		const uv = new Vector2();
+		const normal = new Vector3();
+		const curNormal = new Vector3();
+		const prevNormal = new Vector3();
+		let dx = 0;
+		let dy = 0;
+
+		// pre-compute normals for initial "meridian"
+
+		for ( let j = 0; j <= ( points.length - 1 ); j ++ ) {
+
+			switch ( j ) {
+
+				case 0:				// special handling for 1st vertex on path
+
+					dx = points[ j + 1 ].x - points[ j ].x;
+					dy = points[ j + 1 ].y - points[ j ].y;
+
+					normal.x = dy * 1.0;
+					normal.y = - dx;
+					normal.z = dy * 0.0;
+
+					prevNormal.copy( normal );
+
+					normal.normalize();
+
+					initNormals.push( normal.x, normal.y, normal.z );
+
+					break;
+
+				case ( points.length - 1 ):	// special handling for last Vertex on path
+
+					initNormals.push( prevNormal.x, prevNormal.y, prevNormal.z );
+
+					break;
+
+				default:			// default handling for all vertices in between
+
+					dx = points[ j + 1 ].x - points[ j ].x;
+					dy = points[ j + 1 ].y - points[ j ].y;
+
+					normal.x = dy * 1.0;
+					normal.y = - dx;
+					normal.z = dy * 0.0;
+
+					curNormal.copy( normal );
+
+					normal.x += prevNormal.x;
+					normal.y += prevNormal.y;
+					normal.z += prevNormal.z;
+
+					normal.normalize();
+
+					initNormals.push( normal.x, normal.y, normal.z );
+
+					prevNormal.copy( curNormal );
+
+			}
+
+		}
+
+		// generate vertices, uvs and normals
+
+		for ( let i = 0; i <= segments; i ++ ) {
+
+			const phi = phiStart + i * inverseSegments * phiLength;
+
+			const sin = Math.sin( phi );
+			const cos = Math.cos( phi );
+
+			for ( let j = 0; j <= ( points.length - 1 ); j ++ ) {
+
+				// vertex
+
+				vertex.x = points[ j ].x * sin;
+				vertex.y = points[ j ].y;
+				vertex.z = points[ j ].x * cos;
+
+				vertices.push( vertex.x, vertex.y, vertex.z );
+
+				// uv
+
+				uv.x = i / segments;
+				uv.y = j / ( points.length - 1 );
+
+				uvs.push( uv.x, uv.y );
+
+				// normal
+
+				const x = initNormals[ 3 * j + 0 ] * sin;
+				const y = initNormals[ 3 * j + 1 ];
+				const z = initNormals[ 3 * j + 0 ] * cos;
+
+				normals.push( x, y, z );
+
+			}
+
+		}
+
+		// indices
+
+		for ( let i = 0; i < segments; i ++ ) {
+
+			for ( let j = 0; j < ( points.length - 1 ); j ++ ) {
+
+				const base = j + i * points.length;
+
+				const a = base;
+				const b = base + points.length;
+				const c = base + points.length + 1;
+				const d = base + 1;
+
+				// faces
+
+				indices.push( a, b, d );
+				indices.push( c, d, b );
+
+			}
+
+		}
+
+		// build geometry
+
+		this.setIndex( indices );
+		this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
+		this.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
+		this.setAttribute( 'normal', new Float32BufferAttribute( normals, 3 ) );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
+	static fromJSON( data ) {
+
+		return new LatheGeometry( data.points, data.segments, data.phiStart, data.phiLength );
+
+	}
+
+}
+
+class CapsuleGeometry extends LatheGeometry {
+
+	constructor( radius = 1, length = 1, capSegments = 4, radialSegments = 8 ) {
+
+		const path = new Path();
+		path.absarc( 0, - length / 2, radius, Math.PI * 1.5, 0 );
+		path.absarc( 0, length / 2, radius, 0, Math.PI * 0.5 );
+
+		super( path.getPoints( capSegments ), radialSegments );
+
+		this.type = 'CapsuleGeometry';
+
+		this.parameters = {
+			radius: radius,
+			length: length,
+			capSegments: capSegments,
+			radialSegments: radialSegments,
+		};
+
+	}
+
+	static fromJSON( data ) {
+
+		return new CapsuleGeometry( data.radius, data.length, data.capSegments, data.radialSegments );
+
+	}
+
+}
+
+class CircleGeometry extends BufferGeometry {
+
+	constructor( radius = 1, segments = 32, thetaStart = 0, thetaLength = Math.PI * 2 ) {
+
+		super();
+
+		this.type = 'CircleGeometry';
+
+		this.parameters = {
+			radius: radius,
+			segments: segments,
+			thetaStart: thetaStart,
+			thetaLength: thetaLength
+		};
+
+		segments = Math.max( 3, segments );
+
+		// buffers
+
+		const indices = [];
+		const vertices = [];
+		const normals = [];
+		const uvs = [];
+
+		// helper variables
+
+		const vertex = new Vector3();
+		const uv = new Vector2();
+
+		// center point
+
+		vertices.push( 0, 0, 0 );
+		normals.push( 0, 0, 1 );
+		uvs.push( 0.5, 0.5 );
+
+		for ( let s = 0, i = 3; s <= segments; s ++, i += 3 ) {
+
+			const segment = thetaStart + s / segments * thetaLength;
+
+			// vertex
+
+			vertex.x = radius * Math.cos( segment );
+			vertex.y = radius * Math.sin( segment );
+
+			vertices.push( vertex.x, vertex.y, vertex.z );
+
+			// normal
+
+			normals.push( 0, 0, 1 );
+
+			// uvs
+
+			uv.x = ( vertices[ i ] / radius + 1 ) / 2;
+			uv.y = ( vertices[ i + 1 ] / radius + 1 ) / 2;
+
+			uvs.push( uv.x, uv.y );
+
+		}
+
+		// indices
+
+		for ( let i = 1; i <= segments; i ++ ) {
+
+			indices.push( i, i + 1, 0 );
+
+		}
+
+		// build geometry
+
+		this.setIndex( indices );
+		this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
+		this.setAttribute( 'normal', new Float32BufferAttribute( normals, 3 ) );
+		this.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
+	static fromJSON( data ) {
+
+		return new CircleGeometry( data.radius, data.segments, data.thetaStart, data.thetaLength );
+
+	}
+
+}
+
+class CylinderGeometry extends BufferGeometry {
+
+	constructor( radiusTop = 1, radiusBottom = 1, height = 1, radialSegments = 32, heightSegments = 1, openEnded = false, thetaStart = 0, thetaLength = Math.PI * 2 ) {
+
+		super();
+
+		this.type = 'CylinderGeometry';
+
+		this.parameters = {
+			radiusTop: radiusTop,
+			radiusBottom: radiusBottom,
+			height: height,
+			radialSegments: radialSegments,
+			heightSegments: heightSegments,
+			openEnded: openEnded,
+			thetaStart: thetaStart,
+			thetaLength: thetaLength
+		};
+
+		const scope = this;
+
+		radialSegments = Math.floor( radialSegments );
+		heightSegments = Math.floor( heightSegments );
+
+		// buffers
+
+		const indices = [];
+		const vertices = [];
+		const normals = [];
+		const uvs = [];
+
+		// helper variables
+
+		let index = 0;
+		const indexArray = [];
+		const halfHeight = height / 2;
+		let groupStart = 0;
+
+		// generate geometry
+
+		generateTorso();
+
+		if ( openEnded === false ) {
+
+			if ( radiusTop > 0 ) generateCap( true );
+			if ( radiusBottom > 0 ) generateCap( false );
+
+		}
+
+		// build geometry
+
+		this.setIndex( indices );
+		this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
+		this.setAttribute( 'normal', new Float32BufferAttribute( normals, 3 ) );
+		this.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
+
+		function generateTorso() {
+
+			const normal = new Vector3();
+			const vertex = new Vector3();
+
+			let groupCount = 0;
+
+			// this will be used to calculate the normal
+			const slope = ( radiusBottom - radiusTop ) / height;
+
+			// generate vertices, normals and uvs
+
+			for ( let y = 0; y <= heightSegments; y ++ ) {
+
+				const indexRow = [];
+
+				const v = y / heightSegments;
+
+				// calculate the radius of the current row
+
+				const radius = v * ( radiusBottom - radiusTop ) + radiusTop;
+
+				for ( let x = 0; x <= radialSegments; x ++ ) {
+
+					const u = x / radialSegments;
+
+					const theta = u * thetaLength + thetaStart;
+
+					const sinTheta = Math.sin( theta );
+					const cosTheta = Math.cos( theta );
+
+					// vertex
+
+					vertex.x = radius * sinTheta;
+					vertex.y = - v * height + halfHeight;
+					vertex.z = radius * cosTheta;
+					vertices.push( vertex.x, vertex.y, vertex.z );
+
+					// normal
+
+					normal.set( sinTheta, slope, cosTheta ).normalize();
+					normals.push( normal.x, normal.y, normal.z );
+
+					// uv
+
+					uvs.push( u, 1 - v );
+
+					// save index of vertex in respective row
+
+					indexRow.push( index ++ );
+
+				}
+
+				// now save vertices of the row in our index array
+
+				indexArray.push( indexRow );
+
+			}
+
+			// generate indices
+
+			for ( let x = 0; x < radialSegments; x ++ ) {
+
+				for ( let y = 0; y < heightSegments; y ++ ) {
+
+					// we use the index array to access the correct indices
+
+					const a = indexArray[ y ][ x ];
+					const b = indexArray[ y + 1 ][ x ];
+					const c = indexArray[ y + 1 ][ x + 1 ];
+					const d = indexArray[ y ][ x + 1 ];
+
+					// faces
+
+					if ( radiusTop > 0 ) {
+
+						indices.push( a, b, d );
+						groupCount += 3;
+
+					}
+
+					if ( radiusBottom > 0 ) {
+
+						indices.push( b, c, d );
+						groupCount += 3;
+
+					}
+
+				}
+
+			}
+
+			// add a group to the geometry. this will ensure multi material support
+
+			scope.addGroup( groupStart, groupCount, 0 );
+
+			// calculate new start value for groups
+
+			groupStart += groupCount;
+
+		}
+
+		function generateCap( top ) {
+
+			// save the index of the first center vertex
+			const centerIndexStart = index;
+
+			const uv = new Vector2();
+			const vertex = new Vector3();
+
+			let groupCount = 0;
+
+			const radius = ( top === true ) ? radiusTop : radiusBottom;
+			const sign = ( top === true ) ? 1 : - 1;
+
+			// first we generate the center vertex data of the cap.
+			// because the geometry needs one set of uvs per face,
+			// we must generate a center vertex per face/segment
+
+			for ( let x = 1; x <= radialSegments; x ++ ) {
+
+				// vertex
+
+				vertices.push( 0, halfHeight * sign, 0 );
+
+				// normal
+
+				normals.push( 0, sign, 0 );
+
+				// uv
+
+				uvs.push( 0.5, 0.5 );
+
+				// increase index
+
+				index ++;
+
+			}
+
+			// save the index of the last center vertex
+			const centerIndexEnd = index;
+
+			// now we generate the surrounding vertices, normals and uvs
+
+			for ( let x = 0; x <= radialSegments; x ++ ) {
+
+				const u = x / radialSegments;
+				const theta = u * thetaLength + thetaStart;
+
+				const cosTheta = Math.cos( theta );
+				const sinTheta = Math.sin( theta );
+
+				// vertex
+
+				vertex.x = radius * sinTheta;
+				vertex.y = halfHeight * sign;
+				vertex.z = radius * cosTheta;
+				vertices.push( vertex.x, vertex.y, vertex.z );
+
+				// normal
+
+				normals.push( 0, sign, 0 );
+
+				// uv
+
+				uv.x = ( cosTheta * 0.5 ) + 0.5;
+				uv.y = ( sinTheta * 0.5 * sign ) + 0.5;
+				uvs.push( uv.x, uv.y );
+
+				// increase index
+
+				index ++;
+
+			}
+
+			// generate indices
+
+			for ( let x = 0; x < radialSegments; x ++ ) {
+
+				const c = centerIndexStart + x;
+				const i = centerIndexEnd + x;
+
+				if ( top === true ) {
+
+					// face top
+
+					indices.push( i, i + 1, c );
+
+				} else {
+
+					// face bottom
+
+					indices.push( i + 1, i, c );
+
+				}
+
+				groupCount += 3;
+
+			}
+
+			// add a group to the geometry. this will ensure multi material support
+
+			scope.addGroup( groupStart, groupCount, top === true ? 1 : 2 );
+
+			// calculate new start value for groups
+
+			groupStart += groupCount;
+
+		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
+	static fromJSON( data ) {
+
+		return new CylinderGeometry( data.radiusTop, data.radiusBottom, data.height, data.radialSegments, data.heightSegments, data.openEnded, data.thetaStart, data.thetaLength );
+
+	}
+
+}
+
+class ConeGeometry extends CylinderGeometry {
+
+	constructor( radius = 1, height = 1, radialSegments = 32, heightSegments = 1, openEnded = false, thetaStart = 0, thetaLength = Math.PI * 2 ) {
+
+		super( 0, radius, height, radialSegments, heightSegments, openEnded, thetaStart, thetaLength );
+
+		this.type = 'ConeGeometry';
+
+		this.parameters = {
+			radius: radius,
+			height: height,
+			radialSegments: radialSegments,
+			heightSegments: heightSegments,
+			openEnded: openEnded,
+			thetaStart: thetaStart,
+			thetaLength: thetaLength
+		};
+
+	}
+
+	static fromJSON( data ) {
+
+		return new ConeGeometry( data.radius, data.height, data.radialSegments, data.heightSegments, data.openEnded, data.thetaStart, data.thetaLength );
+
+	}
+
+}
+
+class PolyhedronGeometry extends BufferGeometry {
+
+	constructor( vertices = [], indices = [], radius = 1, detail = 0 ) {
+
+		super();
+
+		this.type = 'PolyhedronGeometry';
+
+		this.parameters = {
+			vertices: vertices,
+			indices: indices,
+			radius: radius,
+			detail: detail
+		};
+
+		// default buffer data
+
+		const vertexBuffer = [];
+		const uvBuffer = [];
+
+		// the subdivision creates the vertex buffer data
+
+		subdivide( detail );
+
+		// all vertices should lie on a conceptual sphere with a given radius
+
+		applyRadius( radius );
+
+		// finally, create the uv data
+
+		generateUVs();
+
+		// build non-indexed geometry
+
+		this.setAttribute( 'position', new Float32BufferAttribute( vertexBuffer, 3 ) );
+		this.setAttribute( 'normal', new Float32BufferAttribute( vertexBuffer.slice(), 3 ) );
+		this.setAttribute( 'uv', new Float32BufferAttribute( uvBuffer, 2 ) );
+
+		if ( detail === 0 ) {
+
+			this.computeVertexNormals(); // flat normals
+
+		} else {
+
+			this.normalizeNormals(); // smooth normals
+
+		}
+
+		// helper functions
+
+		function subdivide( detail ) {
+
+			const a = new Vector3();
+			const b = new Vector3();
+			const c = new Vector3();
+
+			// iterate over all faces and apply a subdivision with the given detail value
+
+			for ( let i = 0; i < indices.length; i += 3 ) {
+
+				// get the vertices of the face
+
+				getVertexByIndex( indices[ i + 0 ], a );
+				getVertexByIndex( indices[ i + 1 ], b );
+				getVertexByIndex( indices[ i + 2 ], c );
+
+				// perform subdivision
+
+				subdivideFace( a, b, c, detail );
+
+			}
+
+		}
+
+		function subdivideFace( a, b, c, detail ) {
+
+			const cols = detail + 1;
+
+			// we use this multidimensional array as a data structure for creating the subdivision
+
+			const v = [];
+
+			// construct all of the vertices for this subdivision
+
+			for ( let i = 0; i <= cols; i ++ ) {
+
+				v[ i ] = [];
+
+				const aj = a.clone().lerp( c, i / cols );
+				const bj = b.clone().lerp( c, i / cols );
+
+				const rows = cols - i;
+
+				for ( let j = 0; j <= rows; j ++ ) {
+
+					if ( j === 0 && i === cols ) {
+
+						v[ i ][ j ] = aj;
+
+					} else {
+
+						v[ i ][ j ] = aj.clone().lerp( bj, j / rows );
+
+					}
+
+				}
+
+			}
+
+			// construct all of the faces
+
+			for ( let i = 0; i < cols; i ++ ) {
+
+				for ( let j = 0; j < 2 * ( cols - i ) - 1; j ++ ) {
+
+					const k = Math.floor( j / 2 );
+
+					if ( j % 2 === 0 ) {
+
+						pushVertex( v[ i ][ k + 1 ] );
+						pushVertex( v[ i + 1 ][ k ] );
+						pushVertex( v[ i ][ k ] );
+
+					} else {
+
+						pushVertex( v[ i ][ k + 1 ] );
+						pushVertex( v[ i + 1 ][ k + 1 ] );
+						pushVertex( v[ i + 1 ][ k ] );
+
+					}
+
+				}
+
+			}
+
+		}
+
+		function applyRadius( radius ) {
+
+			const vertex = new Vector3();
+
+			// iterate over the entire buffer and apply the radius to each vertex
+
+			for ( let i = 0; i < vertexBuffer.length; i += 3 ) {
+
+				vertex.x = vertexBuffer[ i + 0 ];
+				vertex.y = vertexBuffer[ i + 1 ];
+				vertex.z = vertexBuffer[ i + 2 ];
+
+				vertex.normalize().multiplyScalar( radius );
+
+				vertexBuffer[ i + 0 ] = vertex.x;
+				vertexBuffer[ i + 1 ] = vertex.y;
+				vertexBuffer[ i + 2 ] = vertex.z;
+
+			}
+
+		}
+
+		function generateUVs() {
+
+			const vertex = new Vector3();
+
+			for ( let i = 0; i < vertexBuffer.length; i += 3 ) {
+
+				vertex.x = vertexBuffer[ i + 0 ];
+				vertex.y = vertexBuffer[ i + 1 ];
+				vertex.z = vertexBuffer[ i + 2 ];
+
+				const u = azimuth( vertex ) / 2 / Math.PI + 0.5;
+				const v = inclination( vertex ) / Math.PI + 0.5;
+				uvBuffer.push( u, 1 - v );
+
+			}
+
+			correctUVs();
+
+			correctSeam();
+
+		}
+
+		function correctSeam() {
+
+			// handle case when face straddles the seam, see #3269
+
+			for ( let i = 0; i < uvBuffer.length; i += 6 ) {
+
+				// uv data of a single face
+
+				const x0 = uvBuffer[ i + 0 ];
+				const x1 = uvBuffer[ i + 2 ];
+				const x2 = uvBuffer[ i + 4 ];
+
+				const max = Math.max( x0, x1, x2 );
+				const min = Math.min( x0, x1, x2 );
+
+				// 0.9 is somewhat arbitrary
+
+				if ( max > 0.9 && min < 0.1 ) {
+
+					if ( x0 < 0.2 ) uvBuffer[ i + 0 ] += 1;
+					if ( x1 < 0.2 ) uvBuffer[ i + 2 ] += 1;
+					if ( x2 < 0.2 ) uvBuffer[ i + 4 ] += 1;
+
+				}
+
+			}
+
+		}
+
+		function pushVertex( vertex ) {
+
+			vertexBuffer.push( vertex.x, vertex.y, vertex.z );
+
+		}
+
+		function getVertexByIndex( index, vertex ) {
+
+			const stride = index * 3;
+
+			vertex.x = vertices[ stride + 0 ];
+			vertex.y = vertices[ stride + 1 ];
+			vertex.z = vertices[ stride + 2 ];
+
+		}
+
+		function correctUVs() {
+
+			const a = new Vector3();
+			const b = new Vector3();
+			const c = new Vector3();
+
+			const centroid = new Vector3();
+
+			const uvA = new Vector2();
+			const uvB = new Vector2();
+			const uvC = new Vector2();
+
+			for ( let i = 0, j = 0; i < vertexBuffer.length; i += 9, j += 6 ) {
+
+				a.set( vertexBuffer[ i + 0 ], vertexBuffer[ i + 1 ], vertexBuffer[ i + 2 ] );
+				b.set( vertexBuffer[ i + 3 ], vertexBuffer[ i + 4 ], vertexBuffer[ i + 5 ] );
+				c.set( vertexBuffer[ i + 6 ], vertexBuffer[ i + 7 ], vertexBuffer[ i + 8 ] );
+
+				uvA.set( uvBuffer[ j + 0 ], uvBuffer[ j + 1 ] );
+				uvB.set( uvBuffer[ j + 2 ], uvBuffer[ j + 3 ] );
+				uvC.set( uvBuffer[ j + 4 ], uvBuffer[ j + 5 ] );
+
+				centroid.copy( a ).add( b ).add( c ).divideScalar( 3 );
+
+				const azi = azimuth( centroid );
+
+				correctUV( uvA, j + 0, a, azi );
+				correctUV( uvB, j + 2, b, azi );
+				correctUV( uvC, j + 4, c, azi );
+
+			}
+
+		}
+
+		function correctUV( uv, stride, vector, azimuth ) {
+
+			if ( ( azimuth < 0 ) && ( uv.x === 1 ) ) {
+
+				uvBuffer[ stride ] = uv.x - 1;
+
+			}
+
+			if ( ( vector.x === 0 ) && ( vector.z === 0 ) ) {
+
+				uvBuffer[ stride ] = azimuth / 2 / Math.PI + 0.5;
+
+			}
+
+		}
+
+		// Angle around the Y axis, counter-clockwise when looking from above.
+
+		function azimuth( vector ) {
+
+			return Math.atan2( vector.z, - vector.x );
+
+		}
+
+
+		// Angle above the XZ plane.
+
+		function inclination( vector ) {
+
+			return Math.atan2( - vector.y, Math.sqrt( ( vector.x * vector.x ) + ( vector.z * vector.z ) ) );
+
+		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
+	static fromJSON( data ) {
+
+		return new PolyhedronGeometry( data.vertices, data.indices, data.radius, data.details );
+
+	}
+
+}
+
+class DodecahedronGeometry extends PolyhedronGeometry {
+
+	constructor( radius = 1, detail = 0 ) {
+
+		const t = ( 1 + Math.sqrt( 5 ) ) / 2;
+		const r = 1 / t;
+
+		const vertices = [
+
+			// (±1, ±1, ±1)
+			- 1, - 1, - 1,	- 1, - 1, 1,
+			- 1, 1, - 1, - 1, 1, 1,
+			1, - 1, - 1, 1, - 1, 1,
+			1, 1, - 1, 1, 1, 1,
+
+			// (0, ±1/φ, ±φ)
+			0, - r, - t, 0, - r, t,
+			0, r, - t, 0, r, t,
+
+			// (±1/φ, ±φ, 0)
+			- r, - t, 0, - r, t, 0,
+			r, - t, 0, r, t, 0,
+
+			// (±φ, 0, ±1/φ)
+			- t, 0, - r, t, 0, - r,
+			- t, 0, r, t, 0, r
+		];
+
+		const indices = [
+			3, 11, 7, 	3, 7, 15, 	3, 15, 13,
+			7, 19, 17, 	7, 17, 6, 	7, 6, 15,
+			17, 4, 8, 	17, 8, 10, 	17, 10, 6,
+			8, 0, 16, 	8, 16, 2, 	8, 2, 10,
+			0, 12, 1, 	0, 1, 18, 	0, 18, 16,
+			6, 10, 2, 	6, 2, 13, 	6, 13, 15,
+			2, 16, 18, 	2, 18, 3, 	2, 3, 13,
+			18, 1, 9, 	18, 9, 11, 	18, 11, 3,
+			4, 14, 12, 	4, 12, 0, 	4, 0, 8,
+			11, 9, 5, 	11, 5, 19, 	11, 19, 7,
+			19, 5, 14, 	19, 14, 4, 	19, 4, 17,
+			1, 12, 14, 	1, 14, 5, 	1, 5, 9
+		];
+
+		super( vertices, indices, radius, detail );
+
+		this.type = 'DodecahedronGeometry';
+
+		this.parameters = {
+			radius: radius,
+			detail: detail
+		};
+
+	}
+
+	static fromJSON( data ) {
+
+		return new DodecahedronGeometry( data.radius, data.detail );
+
+	}
+
+}
+
+const _v0 = /*@__PURE__*/ new Vector3();
+const _v1$1 = /*@__PURE__*/ new Vector3();
+const _normal = /*@__PURE__*/ new Vector3();
+const _triangle = /*@__PURE__*/ new Triangle();
+
+class EdgesGeometry extends BufferGeometry {
+
+	constructor( geometry = null, thresholdAngle = 1 ) {
+
+		super();
+
+		this.type = 'EdgesGeometry';
+
+		this.parameters = {
+			geometry: geometry,
+			thresholdAngle: thresholdAngle
+		};
+
+		if ( geometry !== null ) {
+
+			const precisionPoints = 4;
+			const precision = Math.pow( 10, precisionPoints );
+			const thresholdDot = Math.cos( DEG2RAD * thresholdAngle );
+
+			const indexAttr = geometry.getIndex();
+			const positionAttr = geometry.getAttribute( 'position' );
+			const indexCount = indexAttr ? indexAttr.count : positionAttr.count;
+
+			const indexArr = [ 0, 0, 0 ];
+			const vertKeys = [ 'a', 'b', 'c' ];
+			const hashes = new Array( 3 );
+
+			const edgeData = {};
+			const vertices = [];
+			for ( let i = 0; i < indexCount; i += 3 ) {
+
+				if ( indexAttr ) {
+
+					indexArr[ 0 ] = indexAttr.getX( i );
+					indexArr[ 1 ] = indexAttr.getX( i + 1 );
+					indexArr[ 2 ] = indexAttr.getX( i + 2 );
+
+				} else {
+
+					indexArr[ 0 ] = i;
+					indexArr[ 1 ] = i + 1;
+					indexArr[ 2 ] = i + 2;
+
+				}
+
+				const { a, b, c } = _triangle;
+				a.fromBufferAttribute( positionAttr, indexArr[ 0 ] );
+				b.fromBufferAttribute( positionAttr, indexArr[ 1 ] );
+				c.fromBufferAttribute( positionAttr, indexArr[ 2 ] );
+				_triangle.getNormal( _normal );
+
+				// create hashes for the edge from the vertices
+				hashes[ 0 ] = `${ Math.round( a.x * precision ) },${ Math.round( a.y * precision ) },${ Math.round( a.z * precision ) }`;
+				hashes[ 1 ] = `${ Math.round( b.x * precision ) },${ Math.round( b.y * precision ) },${ Math.round( b.z * precision ) }`;
+				hashes[ 2 ] = `${ Math.round( c.x * precision ) },${ Math.round( c.y * precision ) },${ Math.round( c.z * precision ) }`;
+
+				// skip degenerate triangles
+				if ( hashes[ 0 ] === hashes[ 1 ] || hashes[ 1 ] === hashes[ 2 ] || hashes[ 2 ] === hashes[ 0 ] ) {
+
+					continue;
+
+				}
+
+				// iterate over every edge
+				for ( let j = 0; j < 3; j ++ ) {
+
+					// get the first and next vertex making up the edge
+					const jNext = ( j + 1 ) % 3;
+					const vecHash0 = hashes[ j ];
+					const vecHash1 = hashes[ jNext ];
+					const v0 = _triangle[ vertKeys[ j ] ];
+					const v1 = _triangle[ vertKeys[ jNext ] ];
+
+					const hash = `${ vecHash0 }_${ vecHash1 }`;
+					const reverseHash = `${ vecHash1 }_${ vecHash0 }`;
+
+					if ( reverseHash in edgeData && edgeData[ reverseHash ] ) {
+
+						// if we found a sibling edge add it into the vertex array if
+						// it meets the angle threshold and delete the edge from the map.
+						if ( _normal.dot( edgeData[ reverseHash ].normal ) <= thresholdDot ) {
+
+							vertices.push( v0.x, v0.y, v0.z );
+							vertices.push( v1.x, v1.y, v1.z );
+
+						}
+
+						edgeData[ reverseHash ] = null;
+
+					} else if ( ! ( hash in edgeData ) ) {
+
+						// if we've already got an edge here then skip adding a new one
+						edgeData[ hash ] = {
+
+							index0: indexArr[ j ],
+							index1: indexArr[ jNext ],
+							normal: _normal.clone(),
+
+						};
+
+					}
+
+				}
+
+			}
+
+			// iterate over all remaining, unmatched edges and add them to the vertex array
+			for ( const key in edgeData ) {
+
+				if ( edgeData[ key ] ) {
+
+					const { index0, index1 } = edgeData[ key ];
+					_v0.fromBufferAttribute( positionAttr, index0 );
+					_v1$1.fromBufferAttribute( positionAttr, index1 );
+
+					vertices.push( _v0.x, _v0.y, _v0.z );
+					vertices.push( _v1$1.x, _v1$1.y, _v1$1.z );
+
+				}
+
+			}
+
+			this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
+
+		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
+}
+
+class Shape extends Path {
+
+	constructor( points ) {
+
+		super( points );
+
+		this.uuid = generateUUID();
+
+		this.type = 'Shape';
+
+		this.holes = [];
+
+	}
+
+	getPointsHoles( divisions ) {
+
+		const holesPts = [];
+
+		for ( let i = 0, l = this.holes.length; i < l; i ++ ) {
+
+			holesPts[ i ] = this.holes[ i ].getPoints( divisions );
+
+		}
+
+		return holesPts;
+
+	}
+
+	// get points of shape and holes (keypoints based on segments parameter)
+
+	extractPoints( divisions ) {
+
+		return {
+
+			shape: this.getPoints( divisions ),
+			holes: this.getPointsHoles( divisions )
+
+		};
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.holes = [];
+
+		for ( let i = 0, l = source.holes.length; i < l; i ++ ) {
+
+			const hole = source.holes[ i ];
+
+			this.holes.push( hole.clone() );
+
+		}
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.uuid = this.uuid;
+		data.holes = [];
+
+		for ( let i = 0, l = this.holes.length; i < l; i ++ ) {
+
+			const hole = this.holes[ i ];
+			data.holes.push( hole.toJSON() );
+
+		}
+
+		return data;
+
+	}
+
+	fromJSON( json ) {
+
+		super.fromJSON( json );
+
+		this.uuid = json.uuid;
+		this.holes = [];
+
+		for ( let i = 0, l = json.holes.length; i < l; i ++ ) {
+
+			const hole = json.holes[ i ];
+			this.holes.push( new Path().fromJSON( hole ) );
+
+		}
+
+		return this;
+
+	}
+
+}
+
+/**
+ * Port from https://github.com/mapbox/earcut (v2.2.4)
+ */
+
+const Earcut = {
+
+	triangulate: function ( data, holeIndices, dim = 2 ) {
+
+		const hasHoles = holeIndices && holeIndices.length;
+		const outerLen = hasHoles ? holeIndices[ 0 ] * dim : data.length;
+		let outerNode = linkedList( data, 0, outerLen, dim, true );
+		const triangles = [];
+
+		if ( ! outerNode || outerNode.next === outerNode.prev ) return triangles;
+
+		let minX, minY, maxX, maxY, x, y, invSize;
+
+		if ( hasHoles ) outerNode = eliminateHoles( data, holeIndices, outerNode, dim );
+
+		// if the shape is not too simple, we'll use z-order curve hash later; calculate polygon bbox
+		if ( data.length > 80 * dim ) {
+
+			minX = maxX = data[ 0 ];
+			minY = maxY = data[ 1 ];
+
+			for ( let i = dim; i < outerLen; i += dim ) {
+
+				x = data[ i ];
+				y = data[ i + 1 ];
+				if ( x < minX ) minX = x;
+				if ( y < minY ) minY = y;
+				if ( x > maxX ) maxX = x;
+				if ( y > maxY ) maxY = y;
+
+			}
+
+			// minX, minY and invSize are later used to transform coords into integers for z-order calculation
+			invSize = Math.max( maxX - minX, maxY - minY );
+			invSize = invSize !== 0 ? 32767 / invSize : 0;
+
+		}
+
+		earcutLinked( outerNode, triangles, dim, minX, minY, invSize, 0 );
+
+		return triangles;
+
+	}
+
+};
+
+// create a circular doubly linked list from polygon points in the specified winding order
+function linkedList( data, start, end, dim, clockwise ) {
+
+	let i, last;
+
+	if ( clockwise === ( signedArea( data, start, end, dim ) > 0 ) ) {
+
+		for ( i = start; i < end; i += dim ) last = insertNode( i, data[ i ], data[ i + 1 ], last );
+
+	} else {
+
+		for ( i = end - dim; i >= start; i -= dim ) last = insertNode( i, data[ i ], data[ i + 1 ], last );
+
+	}
+
+	if ( last && equals( last, last.next ) ) {
+
+		removeNode( last );
+		last = last.next;
+
+	}
+
+	return last;
+
+}
+
+// eliminate colinear or duplicate points
+function filterPoints( start, end ) {
+
+	if ( ! start ) return start;
+	if ( ! end ) end = start;
+
+	let p = start,
+		again;
+	do {
+
+		again = false;
+
+		if ( ! p.steiner && ( equals( p, p.next ) || area( p.prev, p, p.next ) === 0 ) ) {
+
+			removeNode( p );
+			p = end = p.prev;
+			if ( p === p.next ) break;
+			again = true;
+
+		} else {
+
+			p = p.next;
+
+		}
+
+	} while ( again || p !== end );
+
+	return end;
+
+}
+
+// main ear slicing loop which triangulates a polygon (given as a linked list)
+function earcutLinked( ear, triangles, dim, minX, minY, invSize, pass ) {
+
+	if ( ! ear ) return;
+
+	// interlink polygon nodes in z-order
+	if ( ! pass && invSize ) indexCurve( ear, minX, minY, invSize );
+
+	let stop = ear,
+		prev, next;
+
+	// iterate through ears, slicing them one by one
+	while ( ear.prev !== ear.next ) {
+
+		prev = ear.prev;
+		next = ear.next;
+
+		if ( invSize ? isEarHashed( ear, minX, minY, invSize ) : isEar( ear ) ) {
+
+			// cut off the triangle
+			triangles.push( prev.i / dim | 0 );
+			triangles.push( ear.i / dim | 0 );
+			triangles.push( next.i / dim | 0 );
+
+			removeNode( ear );
+
+			// skipping the next vertex leads to less sliver triangles
+			ear = next.next;
+			stop = next.next;
+
+			continue;
+
+		}
+
+		ear = next;
+
+		// if we looped through the whole remaining polygon and can't find any more ears
+		if ( ear === stop ) {
+
+			// try filtering points and slicing again
+			if ( ! pass ) {
+
+				earcutLinked( filterPoints( ear ), triangles, dim, minX, minY, invSize, 1 );
+
+				// if this didn't work, try curing all small self-intersections locally
+
+			} else if ( pass === 1 ) {
+
+				ear = cureLocalIntersections( filterPoints( ear ), triangles, dim );
+				earcutLinked( ear, triangles, dim, minX, minY, invSize, 2 );
+
+				// as a last resort, try splitting the remaining polygon into two
+
+			} else if ( pass === 2 ) {
+
+				splitEarcut( ear, triangles, dim, minX, minY, invSize );
+
+			}
+
+			break;
+
+		}
+
+	}
+
+}
+
+// check whether a polygon node forms a valid ear with adjacent nodes
+function isEar( ear ) {
+
+	const a = ear.prev,
+		b = ear,
+		c = ear.next;
+
+	if ( area( a, b, c ) >= 0 ) return false; // reflex, can't be an ear
+
+	// now make sure we don't have other points inside the potential ear
+	const ax = a.x, bx = b.x, cx = c.x, ay = a.y, by = b.y, cy = c.y;
+
+	// triangle bbox; min & max are calculated like this for speed
+	const x0 = ax < bx ? ( ax < cx ? ax : cx ) : ( bx < cx ? bx : cx ),
+		y0 = ay < by ? ( ay < cy ? ay : cy ) : ( by < cy ? by : cy ),
+		x1 = ax > bx ? ( ax > cx ? ax : cx ) : ( bx > cx ? bx : cx ),
+		y1 = ay > by ? ( ay > cy ? ay : cy ) : ( by > cy ? by : cy );
+
+	let p = c.next;
+	while ( p !== a ) {
+
+		if ( p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1 &&
+			pointInTriangle( ax, ay, bx, by, cx, cy, p.x, p.y ) &&
+			area( p.prev, p, p.next ) >= 0 ) return false;
+		p = p.next;
+
+	}
+
+	return true;
+
+}
+
+function isEarHashed( ear, minX, minY, invSize ) {
+
+	const a = ear.prev,
+		b = ear,
+		c = ear.next;
+
+	if ( area( a, b, c ) >= 0 ) return false; // reflex, can't be an ear
+
+	const ax = a.x, bx = b.x, cx = c.x, ay = a.y, by = b.y, cy = c.y;
+
+	// triangle bbox; min & max are calculated like this for speed
+	const x0 = ax < bx ? ( ax < cx ? ax : cx ) : ( bx < cx ? bx : cx ),
+		y0 = ay < by ? ( ay < cy ? ay : cy ) : ( by < cy ? by : cy ),
+		x1 = ax > bx ? ( ax > cx ? ax : cx ) : ( bx > cx ? bx : cx ),
+		y1 = ay > by ? ( ay > cy ? ay : cy ) : ( by > cy ? by : cy );
+
+	// z-order range for the current triangle bbox;
+	const minZ = zOrder( x0, y0, minX, minY, invSize ),
+		maxZ = zOrder( x1, y1, minX, minY, invSize );
+
+	let p = ear.prevZ,
+		n = ear.nextZ;
+
+	// look for points inside the triangle in both directions
+	while ( p && p.z >= minZ && n && n.z <= maxZ ) {
+
+		if ( p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1 && p !== a && p !== c &&
+			pointInTriangle( ax, ay, bx, by, cx, cy, p.x, p.y ) && area( p.prev, p, p.next ) >= 0 ) return false;
+		p = p.prevZ;
+
+		if ( n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1 && n !== a && n !== c &&
+			pointInTriangle( ax, ay, bx, by, cx, cy, n.x, n.y ) && area( n.prev, n, n.next ) >= 0 ) return false;
+		n = n.nextZ;
+
+	}
+
+	// look for remaining points in decreasing z-order
+	while ( p && p.z >= minZ ) {
+
+		if ( p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1 && p !== a && p !== c &&
+			pointInTriangle( ax, ay, bx, by, cx, cy, p.x, p.y ) && area( p.prev, p, p.next ) >= 0 ) return false;
+		p = p.prevZ;
+
+	}
+
+	// look for remaining points in increasing z-order
+	while ( n && n.z <= maxZ ) {
+
+		if ( n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1 && n !== a && n !== c &&
+			pointInTriangle( ax, ay, bx, by, cx, cy, n.x, n.y ) && area( n.prev, n, n.next ) >= 0 ) return false;
+		n = n.nextZ;
+
+	}
+
+	return true;
+
+}
+
+// go through all polygon nodes and cure small local self-intersections
+function cureLocalIntersections( start, triangles, dim ) {
+
+	let p = start;
+	do {
+
+		const a = p.prev,
+			b = p.next.next;
+
+		if ( ! equals( a, b ) && intersects( a, p, p.next, b ) && locallyInside( a, b ) && locallyInside( b, a ) ) {
+
+			triangles.push( a.i / dim | 0 );
+			triangles.push( p.i / dim | 0 );
+			triangles.push( b.i / dim | 0 );
+
+			// remove two nodes involved
+			removeNode( p );
+			removeNode( p.next );
+
+			p = start = b;
+
+		}
+
+		p = p.next;
+
+	} while ( p !== start );
+
+	return filterPoints( p );
+
+}
+
+// try splitting polygon into two and triangulate them independently
+function splitEarcut( start, triangles, dim, minX, minY, invSize ) {
+
+	// look for a valid diagonal that divides the polygon into two
+	let a = start;
+	do {
+
+		let b = a.next.next;
+		while ( b !== a.prev ) {
+
+			if ( a.i !== b.i && isValidDiagonal( a, b ) ) {
+
+				// split the polygon in two by the diagonal
+				let c = splitPolygon( a, b );
+
+				// filter colinear points around the cuts
+				a = filterPoints( a, a.next );
+				c = filterPoints( c, c.next );
+
+				// run earcut on each half
+				earcutLinked( a, triangles, dim, minX, minY, invSize, 0 );
+				earcutLinked( c, triangles, dim, minX, minY, invSize, 0 );
+				return;
+
+			}
+
+			b = b.next;
+
+		}
+
+		a = a.next;
+
+	} while ( a !== start );
+
+}
+
+// link every hole into the outer loop, producing a single-ring polygon without holes
+function eliminateHoles( data, holeIndices, outerNode, dim ) {
+
+	const queue = [];
+	let i, len, start, end, list;
+
+	for ( i = 0, len = holeIndices.length; i < len; i ++ ) {
+
+		start = holeIndices[ i ] * dim;
+		end = i < len - 1 ? holeIndices[ i + 1 ] * dim : data.length;
+		list = linkedList( data, start, end, dim, false );
+		if ( list === list.next ) list.steiner = true;
+		queue.push( getLeftmost( list ) );
+
+	}
+
+	queue.sort( compareX );
+
+	// process holes from left to right
+	for ( i = 0; i < queue.length; i ++ ) {
+
+		outerNode = eliminateHole( queue[ i ], outerNode );
+
+	}
+
+	return outerNode;
+
+}
+
+function compareX( a, b ) {
+
+	return a.x - b.x;
+
+}
+
+// find a bridge between vertices that connects hole with an outer ring and link it
+function eliminateHole( hole, outerNode ) {
+
+	const bridge = findHoleBridge( hole, outerNode );
+	if ( ! bridge ) {
+
+		return outerNode;
+
+	}
+
+	const bridgeReverse = splitPolygon( bridge, hole );
+
+	// filter collinear points around the cuts
+	filterPoints( bridgeReverse, bridgeReverse.next );
+	return filterPoints( bridge, bridge.next );
+
+}
+
+// David Eberly's algorithm for finding a bridge between hole and outer polygon
+function findHoleBridge( hole, outerNode ) {
+
+	let p = outerNode,
+		qx = - Infinity,
+		m;
+
+	const hx = hole.x, hy = hole.y;
+
+	// find a segment intersected by a ray from the hole's leftmost point to the left;
+	// segment's endpoint with lesser x will be potential connection point
+	do {
+
+		if ( hy <= p.y && hy >= p.next.y && p.next.y !== p.y ) {
+
+			const x = p.x + ( hy - p.y ) * ( p.next.x - p.x ) / ( p.next.y - p.y );
+			if ( x <= hx && x > qx ) {
+
+				qx = x;
+				m = p.x < p.next.x ? p : p.next;
+				if ( x === hx ) return m; // hole touches outer segment; pick leftmost endpoint
+
+			}
+
+		}
+
+		p = p.next;
+
+	} while ( p !== outerNode );
+
+	if ( ! m ) return null;
+
+	// look for points inside the triangle of hole point, segment intersection and endpoint;
+	// if there are no points found, we have a valid connection;
+	// otherwise choose the point of the minimum angle with the ray as connection point
+
+	const stop = m,
+		mx = m.x,
+		my = m.y;
+	let tanMin = Infinity, tan;
+
+	p = m;
+
+	do {
+
+		if ( hx >= p.x && p.x >= mx && hx !== p.x &&
+				pointInTriangle( hy < my ? hx : qx, hy, mx, my, hy < my ? qx : hx, hy, p.x, p.y ) ) {
+
+			tan = Math.abs( hy - p.y ) / ( hx - p.x ); // tangential
+
+			if ( locallyInside( p, hole ) && ( tan < tanMin || ( tan === tanMin && ( p.x > m.x || ( p.x === m.x && sectorContainsSector( m, p ) ) ) ) ) ) {
+
+				m = p;
+				tanMin = tan;
+
+			}
+
+		}
+
+		p = p.next;
+
+	} while ( p !== stop );
+
+	return m;
+
+}
+
+// whether sector in vertex m contains sector in vertex p in the same coordinates
+function sectorContainsSector( m, p ) {
+
+	return area( m.prev, m, p.prev ) < 0 && area( p.next, m, m.next ) < 0;
+
+}
+
+// interlink polygon nodes in z-order
+function indexCurve( start, minX, minY, invSize ) {
+
+	let p = start;
+	do {
+
+		if ( p.z === 0 ) p.z = zOrder( p.x, p.y, minX, minY, invSize );
+		p.prevZ = p.prev;
+		p.nextZ = p.next;
+		p = p.next;
+
+	} while ( p !== start );
+
+	p.prevZ.nextZ = null;
+	p.prevZ = null;
+
+	sortLinked( p );
+
+}
+
+// Simon Tatham's linked list merge sort algorithm
+// http://www.chiark.greenend.org.uk/~sgtatham/algorithms/listsort.html
+function sortLinked( list ) {
+
+	let i, p, q, e, tail, numMerges, pSize, qSize,
+		inSize = 1;
+
+	do {
+
+		p = list;
+		list = null;
+		tail = null;
+		numMerges = 0;
+
+		while ( p ) {
+
+			numMerges ++;
+			q = p;
+			pSize = 0;
+			for ( i = 0; i < inSize; i ++ ) {
+
+				pSize ++;
+				q = q.nextZ;
+				if ( ! q ) break;
+
+			}
+
+			qSize = inSize;
+
+			while ( pSize > 0 || ( qSize > 0 && q ) ) {
+
+				if ( pSize !== 0 && ( qSize === 0 || ! q || p.z <= q.z ) ) {
+
+					e = p;
+					p = p.nextZ;
+					pSize --;
+
+				} else {
+
+					e = q;
+					q = q.nextZ;
+					qSize --;
+
+				}
+
+				if ( tail ) tail.nextZ = e;
+				else list = e;
+
+				e.prevZ = tail;
+				tail = e;
+
+			}
+
+			p = q;
+
+		}
+
+		tail.nextZ = null;
+		inSize *= 2;
+
+	} while ( numMerges > 1 );
+
+	return list;
+
+}
+
+// z-order of a point given coords and inverse of the longer side of data bbox
+function zOrder( x, y, minX, minY, invSize ) {
+
+	// coords are transformed into non-negative 15-bit integer range
+	x = ( x - minX ) * invSize | 0;
+	y = ( y - minY ) * invSize | 0;
+
+	x = ( x | ( x << 8 ) ) & 0x00FF00FF;
+	x = ( x | ( x << 4 ) ) & 0x0F0F0F0F;
+	x = ( x | ( x << 2 ) ) & 0x33333333;
+	x = ( x | ( x << 1 ) ) & 0x55555555;
+
+	y = ( y | ( y << 8 ) ) & 0x00FF00FF;
+	y = ( y | ( y << 4 ) ) & 0x0F0F0F0F;
+	y = ( y | ( y << 2 ) ) & 0x33333333;
+	y = ( y | ( y << 1 ) ) & 0x55555555;
+
+	return x | ( y << 1 );
+
+}
+
+// find the leftmost node of a polygon ring
+function getLeftmost( start ) {
+
+	let p = start,
+		leftmost = start;
+	do {
+
+		if ( p.x < leftmost.x || ( p.x === leftmost.x && p.y < leftmost.y ) ) leftmost = p;
+		p = p.next;
+
+	} while ( p !== start );
+
+	return leftmost;
+
+}
+
+// check if a point lies within a convex triangle
+function pointInTriangle( ax, ay, bx, by, cx, cy, px, py ) {
+
+	return ( cx - px ) * ( ay - py ) >= ( ax - px ) * ( cy - py ) &&
+           ( ax - px ) * ( by - py ) >= ( bx - px ) * ( ay - py ) &&
+           ( bx - px ) * ( cy - py ) >= ( cx - px ) * ( by - py );
+
+}
+
+// check if a diagonal between two polygon nodes is valid (lies in polygon interior)
+function isValidDiagonal( a, b ) {
+
+	return a.next.i !== b.i && a.prev.i !== b.i && ! intersectsPolygon( a, b ) && // dones't intersect other edges
+           ( locallyInside( a, b ) && locallyInside( b, a ) && middleInside( a, b ) && // locally visible
+            ( area( a.prev, a, b.prev ) || area( a, b.prev, b ) ) || // does not create opposite-facing sectors
+            equals( a, b ) && area( a.prev, a, a.next ) > 0 && area( b.prev, b, b.next ) > 0 ); // special zero-length case
+
+}
+
+// signed area of a triangle
+function area( p, q, r ) {
+
+	return ( q.y - p.y ) * ( r.x - q.x ) - ( q.x - p.x ) * ( r.y - q.y );
+
+}
+
+// check if two points are equal
+function equals( p1, p2 ) {
+
+	return p1.x === p2.x && p1.y === p2.y;
+
+}
+
+// check if two segments intersect
+function intersects( p1, q1, p2, q2 ) {
+
+	const o1 = sign( area( p1, q1, p2 ) );
+	const o2 = sign( area( p1, q1, q2 ) );
+	const o3 = sign( area( p2, q2, p1 ) );
+	const o4 = sign( area( p2, q2, q1 ) );
+
+	if ( o1 !== o2 && o3 !== o4 ) return true; // general case
+
+	if ( o1 === 0 && onSegment( p1, p2, q1 ) ) return true; // p1, q1 and p2 are collinear and p2 lies on p1q1
+	if ( o2 === 0 && onSegment( p1, q2, q1 ) ) return true; // p1, q1 and q2 are collinear and q2 lies on p1q1
+	if ( o3 === 0 && onSegment( p2, p1, q2 ) ) return true; // p2, q2 and p1 are collinear and p1 lies on p2q2
+	if ( o4 === 0 && onSegment( p2, q1, q2 ) ) return true; // p2, q2 and q1 are collinear and q1 lies on p2q2
+
+	return false;
+
+}
+
+// for collinear points p, q, r, check if point q lies on segment pr
+function onSegment( p, q, r ) {
+
+	return q.x <= Math.max( p.x, r.x ) && q.x >= Math.min( p.x, r.x ) && q.y <= Math.max( p.y, r.y ) && q.y >= Math.min( p.y, r.y );
+
+}
+
+function sign( num ) {
+
+	return num > 0 ? 1 : num < 0 ? - 1 : 0;
+
+}
+
+// check if a polygon diagonal intersects any polygon segments
+function intersectsPolygon( a, b ) {
+
+	let p = a;
+	do {
+
+		if ( p.i !== a.i && p.next.i !== a.i && p.i !== b.i && p.next.i !== b.i &&
+			intersects( p, p.next, a, b ) ) return true;
+		p = p.next;
+
+	} while ( p !== a );
+
+	return false;
+
+}
+
+// check if a polygon diagonal is locally inside the polygon
+function locallyInside( a, b ) {
+
+	return area( a.prev, a, a.next ) < 0 ?
+		area( a, b, a.next ) >= 0 && area( a, a.prev, b ) >= 0 :
+		area( a, b, a.prev ) < 0 || area( a, a.next, b ) < 0;
+
+}
+
+// check if the middle point of a polygon diagonal is inside the polygon
+function middleInside( a, b ) {
+
+	let p = a,
+		inside = false;
+	const px = ( a.x + b.x ) / 2,
+		py = ( a.y + b.y ) / 2;
+	do {
+
+		if ( ( ( p.y > py ) !== ( p.next.y > py ) ) && p.next.y !== p.y &&
+			( px < ( p.next.x - p.x ) * ( py - p.y ) / ( p.next.y - p.y ) + p.x ) )
+			inside = ! inside;
+		p = p.next;
+
+	} while ( p !== a );
+
+	return inside;
+
+}
+
+// link two polygon vertices with a bridge; if the vertices belong to the same ring, it splits polygon into two;
+// if one belongs to the outer ring and another to a hole, it merges it into a single ring
+function splitPolygon( a, b ) {
+
+	const a2 = new Node( a.i, a.x, a.y ),
+		b2 = new Node( b.i, b.x, b.y ),
+		an = a.next,
+		bp = b.prev;
+
+	a.next = b;
+	b.prev = a;
+
+	a2.next = an;
+	an.prev = a2;
+
+	b2.next = a2;
+	a2.prev = b2;
+
+	bp.next = b2;
+	b2.prev = bp;
+
+	return b2;
+
+}
+
+// create a node and optionally link it with previous one (in a circular doubly linked list)
+function insertNode( i, x, y, last ) {
+
+	const p = new Node( i, x, y );
+
+	if ( ! last ) {
+
+		p.prev = p;
+		p.next = p;
+
+	} else {
+
+		p.next = last.next;
+		p.prev = last;
+		last.next.prev = p;
+		last.next = p;
+
+	}
+
+	return p;
+
+}
+
+function removeNode( p ) {
+
+	p.next.prev = p.prev;
+	p.prev.next = p.next;
+
+	if ( p.prevZ ) p.prevZ.nextZ = p.nextZ;
+	if ( p.nextZ ) p.nextZ.prevZ = p.prevZ;
+
+}
+
+function Node( i, x, y ) {
+
+	// vertex index in coordinates array
+	this.i = i;
+
+	// vertex coordinates
+	this.x = x;
+	this.y = y;
+
+	// previous and next vertex nodes in a polygon ring
+	this.prev = null;
+	this.next = null;
+
+	// z-order curve value
+	this.z = 0;
+
+	// previous and next nodes in z-order
+	this.prevZ = null;
+	this.nextZ = null;
+
+	// indicates whether this is a steiner point
+	this.steiner = false;
+
+}
+
+function signedArea( data, start, end, dim ) {
+
+	let sum = 0;
+	for ( let i = start, j = end - dim; i < end; i += dim ) {
+
+		sum += ( data[ j ] - data[ i ] ) * ( data[ i + 1 ] + data[ j + 1 ] );
+		j = i;
+
+	}
+
+	return sum;
+
+}
+
+class ShapeUtils {
+
+	// calculate area of the contour polygon
+
+	static area( contour ) {
+
+		const n = contour.length;
+		let a = 0.0;
+
+		for ( let p = n - 1, q = 0; q < n; p = q ++ ) {
+
+			a += contour[ p ].x * contour[ q ].y - contour[ q ].x * contour[ p ].y;
+
+		}
+
+		return a * 0.5;
+
+	}
+
+	static isClockWise( pts ) {
+
+		return ShapeUtils.area( pts ) < 0;
+
+	}
+
+	static triangulateShape( contour, holes ) {
+
+		const vertices = []; // flat array of vertices like [ x0,y0, x1,y1, x2,y2, ... ]
+		const holeIndices = []; // array of hole indices
+		const faces = []; // final array of vertex indices like [ [ a,b,d ], [ b,c,d ] ]
+
+		removeDupEndPts( contour );
+		addContour( vertices, contour );
+
+		//
+
+		let holeIndex = contour.length;
+
+		holes.forEach( removeDupEndPts );
+
+		for ( let i = 0; i < holes.length; i ++ ) {
+
+			holeIndices.push( holeIndex );
+			holeIndex += holes[ i ].length;
+			addContour( vertices, holes[ i ] );
+
+		}
+
+		//
+
+		const triangles = Earcut.triangulate( vertices, holeIndices );
+
+		//
+
+		for ( let i = 0; i < triangles.length; i += 3 ) {
+
+			faces.push( triangles.slice( i, i + 3 ) );
+
+		}
+
+		return faces;
+
+	}

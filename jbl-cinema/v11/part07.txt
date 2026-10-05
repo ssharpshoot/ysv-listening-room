@@ -1,0 +1,5000 @@
+		// Events
+
+		function onContextLost( event ) {
+
+			event.preventDefault();
+
+			console.log( 'THREE.WebGLRenderer: Context Lost.' );
+
+			_isContextLost = true;
+
+		}
+
+		function onContextRestore( /* event */ ) {
+
+			console.log( 'THREE.WebGLRenderer: Context Restored.' );
+
+			_isContextLost = false;
+
+			const infoAutoReset = info.autoReset;
+			const shadowMapEnabled = shadowMap.enabled;
+			const shadowMapAutoUpdate = shadowMap.autoUpdate;
+			const shadowMapNeedsUpdate = shadowMap.needsUpdate;
+			const shadowMapType = shadowMap.type;
+
+			initGLContext();
+
+			info.autoReset = infoAutoReset;
+			shadowMap.enabled = shadowMapEnabled;
+			shadowMap.autoUpdate = shadowMapAutoUpdate;
+			shadowMap.needsUpdate = shadowMapNeedsUpdate;
+			shadowMap.type = shadowMapType;
+
+		}
+
+		function onContextCreationError( event ) {
+
+			console.error( 'THREE.WebGLRenderer: A WebGL context could not be created. Reason: ', event.statusMessage );
+
+		}
+
+		function onMaterialDispose( event ) {
+
+			const material = event.target;
+
+			material.removeEventListener( 'dispose', onMaterialDispose );
+
+			deallocateMaterial( material );
+
+		}
+
+		// Buffer deallocation
+
+		function deallocateMaterial( material ) {
+
+			releaseMaterialProgramReferences( material );
+
+			properties.remove( material );
+
+		}
+
+
+		function releaseMaterialProgramReferences( material ) {
+
+			const programs = properties.get( material ).programs;
+
+			if ( programs !== undefined ) {
+
+				programs.forEach( function ( program ) {
+
+					programCache.releaseProgram( program );
+
+				} );
+
+				if ( material.isShaderMaterial ) {
+
+					programCache.releaseShaderCache( material );
+
+				}
+
+			}
+
+		}
+
+		// Buffer rendering
+
+		this.renderBufferDirect = function ( camera, scene, geometry, material, object, group ) {
+
+			if ( scene === null ) scene = _emptyScene; // renderBufferDirect second parameter used to be fog (could be null)
+
+			const frontFaceCW = ( object.isMesh && object.matrixWorld.determinant() < 0 );
+
+			const program = setProgram( camera, scene, geometry, material, object );
+
+			state.setMaterial( material, frontFaceCW );
+
+			//
+
+			let index = geometry.index;
+			let rangeFactor = 1;
+
+			if ( material.wireframe === true ) {
+
+				index = geometries.getWireframeAttribute( geometry );
+
+				if ( index === undefined ) return;
+
+				rangeFactor = 2;
+
+			}
+
+			//
+
+			const drawRange = geometry.drawRange;
+			const position = geometry.attributes.position;
+
+			let drawStart = drawRange.start * rangeFactor;
+			let drawEnd = ( drawRange.start + drawRange.count ) * rangeFactor;
+
+			if ( group !== null ) {
+
+				drawStart = Math.max( drawStart, group.start * rangeFactor );
+				drawEnd = Math.min( drawEnd, ( group.start + group.count ) * rangeFactor );
+
+			}
+
+			if ( index !== null ) {
+
+				drawStart = Math.max( drawStart, 0 );
+				drawEnd = Math.min( drawEnd, index.count );
+
+			} else if ( position !== undefined && position !== null ) {
+
+				drawStart = Math.max( drawStart, 0 );
+				drawEnd = Math.min( drawEnd, position.count );
+
+			}
+
+			const drawCount = drawEnd - drawStart;
+
+			if ( drawCount < 0 || drawCount === Infinity ) return;
+
+			//
+
+			bindingStates.setup( object, material, program, geometry, index );
+
+			let attribute;
+			let renderer = bufferRenderer;
+
+			if ( index !== null ) {
+
+				attribute = attributes.get( index );
+
+				renderer = indexedBufferRenderer;
+				renderer.setIndex( attribute );
+
+			}
+
+			//
+
+			if ( object.isMesh ) {
+
+				if ( material.wireframe === true ) {
+
+					state.setLineWidth( material.wireframeLinewidth * getTargetPixelRatio() );
+					renderer.setMode( _gl.LINES );
+
+				} else {
+
+					renderer.setMode( _gl.TRIANGLES );
+
+				}
+
+			} else if ( object.isLine ) {
+
+				let lineWidth = material.linewidth;
+
+				if ( lineWidth === undefined ) lineWidth = 1; // Not using Line*Material
+
+				state.setLineWidth( lineWidth * getTargetPixelRatio() );
+
+				if ( object.isLineSegments ) {
+
+					renderer.setMode( _gl.LINES );
+
+				} else if ( object.isLineLoop ) {
+
+					renderer.setMode( _gl.LINE_LOOP );
+
+				} else {
+
+					renderer.setMode( _gl.LINE_STRIP );
+
+				}
+
+			} else if ( object.isPoints ) {
+
+				renderer.setMode( _gl.POINTS );
+
+			} else if ( object.isSprite ) {
+
+				renderer.setMode( _gl.TRIANGLES );
+
+			}
+
+			if ( object.isBatchedMesh ) {
+
+				if ( object._multiDrawInstances !== null ) {
+
+					renderer.renderMultiDrawInstances( object._multiDrawStarts, object._multiDrawCounts, object._multiDrawCount, object._multiDrawInstances );
+
+				} else {
+
+					if ( ! extensions.get( 'WEBGL_multi_draw' ) ) {
+
+						const starts = object._multiDrawStarts;
+						const counts = object._multiDrawCounts;
+						const drawCount = object._multiDrawCount;
+						const bytesPerElement = index ? attributes.get( index ).bytesPerElement : 1;
+						const uniforms = properties.get( material ).currentProgram.getUniforms();
+						for ( let i = 0; i < drawCount; i ++ ) {
+
+							uniforms.setValue( _gl, '_gl_DrawID', i );
+							renderer.render( starts[ i ] / bytesPerElement, counts[ i ] );
+
+						}
+
+					} else {
+
+						renderer.renderMultiDraw( object._multiDrawStarts, object._multiDrawCounts, object._multiDrawCount );
+
+					}
+
+				}
+
+			} else if ( object.isInstancedMesh ) {
+
+				renderer.renderInstances( drawStart, drawCount, object.count );
+
+			} else if ( geometry.isInstancedBufferGeometry ) {
+
+				const maxInstanceCount = geometry._maxInstanceCount !== undefined ? geometry._maxInstanceCount : Infinity;
+				const instanceCount = Math.min( geometry.instanceCount, maxInstanceCount );
+
+				renderer.renderInstances( drawStart, drawCount, instanceCount );
+
+			} else {
+
+				renderer.render( drawStart, drawCount );
+
+			}
+
+		};
+
+		// Compile
+
+		function prepareMaterial( material, scene, object ) {
+
+			if ( material.transparent === true && material.side === DoubleSide && material.forceSinglePass === false ) {
+
+				material.side = BackSide;
+				material.needsUpdate = true;
+				getProgram( material, scene, object );
+
+				material.side = FrontSide;
+				material.needsUpdate = true;
+				getProgram( material, scene, object );
+
+				material.side = DoubleSide;
+
+			} else {
+
+				getProgram( material, scene, object );
+
+			}
+
+		}
+
+		this.compile = function ( scene, camera, targetScene = null ) {
+
+			if ( targetScene === null ) targetScene = scene;
+
+			currentRenderState = renderStates.get( targetScene );
+			currentRenderState.init( camera );
+
+			renderStateStack.push( currentRenderState );
+
+			// gather lights from both the target scene and the new object that will be added to the scene.
+
+			targetScene.traverseVisible( function ( object ) {
+
+				if ( object.isLight && object.layers.test( camera.layers ) ) {
+
+					currentRenderState.pushLight( object );
+
+					if ( object.castShadow ) {
+
+						currentRenderState.pushShadow( object );
+
+					}
+
+				}
+
+			} );
+
+			if ( scene !== targetScene ) {
+
+				scene.traverseVisible( function ( object ) {
+
+					if ( object.isLight && object.layers.test( camera.layers ) ) {
+
+						currentRenderState.pushLight( object );
+
+						if ( object.castShadow ) {
+
+							currentRenderState.pushShadow( object );
+
+						}
+
+					}
+
+				} );
+
+			}
+
+			currentRenderState.setupLights();
+
+			// Only initialize materials in the new scene, not the targetScene.
+
+			const materials = new Set();
+
+			scene.traverse( function ( object ) {
+
+				if ( ! ( object.isMesh || object.isPoints || object.isLine || object.isSprite ) ) {
+
+					return;
+
+				}
+
+				const material = object.material;
+
+				if ( material ) {
+
+					if ( Array.isArray( material ) ) {
+
+						for ( let i = 0; i < material.length; i ++ ) {
+
+							const material2 = material[ i ];
+
+							prepareMaterial( material2, targetScene, object );
+							materials.add( material2 );
+
+						}
+
+					} else {
+
+						prepareMaterial( material, targetScene, object );
+						materials.add( material );
+
+					}
+
+				}
+
+			} );
+
+			renderStateStack.pop();
+			currentRenderState = null;
+
+			return materials;
+
+		};
+
+		// compileAsync
+
+		this.compileAsync = function ( scene, camera, targetScene = null ) {
+
+			const materials = this.compile( scene, camera, targetScene );
+
+			// Wait for all the materials in the new object to indicate that they're
+			// ready to be used before resolving the promise.
+
+			return new Promise( ( resolve ) => {
+
+				function checkMaterialsReady() {
+
+					materials.forEach( function ( material ) {
+
+						const materialProperties = properties.get( material );
+						const program = materialProperties.currentProgram;
+
+						if ( program.isReady() ) {
+
+							// remove any programs that report they're ready to use from the list
+							materials.delete( material );
+
+						}
+
+					} );
+
+					// once the list of compiling materials is empty, call the callback
+
+					if ( materials.size === 0 ) {
+
+						resolve( scene );
+						return;
+
+					}
+
+					// if some materials are still not ready, wait a bit and check again
+
+					setTimeout( checkMaterialsReady, 10 );
+
+				}
+
+				if ( extensions.get( 'KHR_parallel_shader_compile' ) !== null ) {
+
+					// If we can check the compilation status of the materials without
+					// blocking then do so right away.
+
+					checkMaterialsReady();
+
+				} else {
+
+					// Otherwise start by waiting a bit to give the materials we just
+					// initialized a chance to finish.
+
+					setTimeout( checkMaterialsReady, 10 );
+
+				}
+
+			} );
+
+		};
+
+		// Animation Loop
+
+		let onAnimationFrameCallback = null;
+
+		function onAnimationFrame( time ) {
+
+			if ( onAnimationFrameCallback ) onAnimationFrameCallback( time );
+
+		}
+
+		function onXRSessionStart() {
+
+			animation.stop();
+
+		}
+
+		function onXRSessionEnd() {
+
+			animation.start();
+
+		}
+
+		const animation = new WebGLAnimation();
+		animation.setAnimationLoop( onAnimationFrame );
+
+		if ( typeof self !== 'undefined' ) animation.setContext( self );
+
+		this.setAnimationLoop = function ( callback ) {
+
+			onAnimationFrameCallback = callback;
+			xr.setAnimationLoop( callback );
+
+			( callback === null ) ? animation.stop() : animation.start();
+
+		};
+
+		xr.addEventListener( 'sessionstart', onXRSessionStart );
+		xr.addEventListener( 'sessionend', onXRSessionEnd );
+
+		// Rendering
+
+		this.render = function ( scene, camera ) {
+
+			if ( camera !== undefined && camera.isCamera !== true ) {
+
+				console.error( 'THREE.WebGLRenderer.render: camera is not an instance of THREE.Camera.' );
+				return;
+
+			}
+
+			if ( _isContextLost === true ) return;
+
+			// update scene graph
+
+			if ( scene.matrixWorldAutoUpdate === true ) scene.updateMatrixWorld();
+
+			// update camera matrices and frustum
+
+			if ( camera.parent === null && camera.matrixWorldAutoUpdate === true ) camera.updateMatrixWorld();
+
+			if ( xr.enabled === true && xr.isPresenting === true ) {
+
+				if ( xr.cameraAutoUpdate === true ) xr.updateCamera( camera );
+
+				camera = xr.getCamera(); // use XR camera for rendering
+
+			}
+
+			//
+			if ( scene.isScene === true ) scene.onBeforeRender( _this, scene, camera, _currentRenderTarget );
+
+			currentRenderState = renderStates.get( scene, renderStateStack.length );
+			currentRenderState.init( camera );
+
+			renderStateStack.push( currentRenderState );
+
+			_projScreenMatrix.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
+			_frustum.setFromProjectionMatrix( _projScreenMatrix );
+
+			_localClippingEnabled = this.localClippingEnabled;
+			_clippingEnabled = clipping.init( this.clippingPlanes, _localClippingEnabled );
+
+			currentRenderList = renderLists.get( scene, renderListStack.length );
+			currentRenderList.init();
+
+			renderListStack.push( currentRenderList );
+
+			if ( xr.enabled === true && xr.isPresenting === true ) {
+
+				const depthSensingMesh = _this.xr.getDepthSensingMesh();
+
+				if ( depthSensingMesh !== null ) {
+
+					projectObject( depthSensingMesh, camera, - Infinity, _this.sortObjects );
+
+				}
+
+			}
+
+			projectObject( scene, camera, 0, _this.sortObjects );
+
+			currentRenderList.finish();
+
+			if ( _this.sortObjects === true ) {
+
+				currentRenderList.sort( _opaqueSort, _transparentSort );
+
+			}
+
+			_renderBackground = xr.enabled === false || xr.isPresenting === false || xr.hasDepthSensing() === false;
+			if ( _renderBackground ) {
+
+				background.addToRenderList( currentRenderList, scene );
+
+			}
+
+			//
+
+			this.info.render.frame ++;
+
+			if ( _clippingEnabled === true ) clipping.beginShadows();
+
+			const shadowsArray = currentRenderState.state.shadowsArray;
+
+			shadowMap.render( shadowsArray, scene, camera );
+
+			if ( _clippingEnabled === true ) clipping.endShadows();
+
+			//
+
+			if ( this.info.autoReset === true ) this.info.reset();
+
+			// render scene
+
+			const opaqueObjects = currentRenderList.opaque;
+			const transmissiveObjects = currentRenderList.transmissive;
+
+			currentRenderState.setupLights();
+
+			if ( camera.isArrayCamera ) {
+
+				const cameras = camera.cameras;
+
+				if ( transmissiveObjects.length > 0 ) {
+
+					for ( let i = 0, l = cameras.length; i < l; i ++ ) {
+
+						const camera2 = cameras[ i ];
+
+						renderTransmissionPass( opaqueObjects, transmissiveObjects, scene, camera2 );
+
+					}
+
+				}
+
+				if ( _renderBackground ) background.render( scene );
+
+				for ( let i = 0, l = cameras.length; i < l; i ++ ) {
+
+					const camera2 = cameras[ i ];
+
+					renderScene( currentRenderList, scene, camera2, camera2.viewport );
+
+				}
+
+			} else {
+
+				if ( transmissiveObjects.length > 0 ) renderTransmissionPass( opaqueObjects, transmissiveObjects, scene, camera );
+
+				if ( _renderBackground ) background.render( scene );
+
+				renderScene( currentRenderList, scene, camera );
+
+			}
+
+			//
+
+			if ( _currentRenderTarget !== null ) {
+
+				// resolve multisample renderbuffers to a single-sample texture if necessary
+
+				textures.updateMultisampleRenderTarget( _currentRenderTarget );
+
+				// Generate mipmap if we're using any kind of mipmap filtering
+
+				textures.updateRenderTargetMipmap( _currentRenderTarget );
+
+			}
+
+			//
+
+			if ( scene.isScene === true ) scene.onAfterRender( _this, scene, camera );
+
+			// _gl.finish();
+
+			bindingStates.resetDefaultState();
+			_currentMaterialId = - 1;
+			_currentCamera = null;
+
+			renderStateStack.pop();
+
+			if ( renderStateStack.length > 0 ) {
+
+				currentRenderState = renderStateStack[ renderStateStack.length - 1 ];
+
+				if ( _clippingEnabled === true ) clipping.setGlobalState( _this.clippingPlanes, currentRenderState.state.camera );
+
+			} else {
+
+				currentRenderState = null;
+
+			}
+
+			renderListStack.pop();
+
+			if ( renderListStack.length > 0 ) {
+
+				currentRenderList = renderListStack[ renderListStack.length - 1 ];
+
+			} else {
+
+				currentRenderList = null;
+
+			}
+
+		};
+
+		function projectObject( object, camera, groupOrder, sortObjects ) {
+
+			if ( object.visible === false ) return;
+
+			const visible = object.layers.test( camera.layers );
+
+			if ( visible ) {
+
+				if ( object.isGroup ) {
+
+					groupOrder = object.renderOrder;
+
+				} else if ( object.isLOD ) {
+
+					if ( object.autoUpdate === true ) object.update( camera );
+
+				} else if ( object.isLight ) {
+
+					currentRenderState.pushLight( object );
+
+					if ( object.castShadow ) {
+
+						currentRenderState.pushShadow( object );
+
+					}
+
+				} else if ( object.isSprite ) {
+
+					if ( ! object.frustumCulled || _frustum.intersectsSprite( object ) ) {
+
+						if ( sortObjects ) {
+
+							_vector4.setFromMatrixPosition( object.matrixWorld )
+								.applyMatrix4( _projScreenMatrix );
+
+						}
+
+						const geometry = objects.update( object );
+						const material = object.material;
+
+						if ( material.visible ) {
+
+							currentRenderList.push( object, geometry, material, groupOrder, _vector4.z, null );
+
+						}
+
+					}
+
+				} else if ( object.isMesh || object.isLine || object.isPoints ) {
+
+					if ( ! object.frustumCulled || _frustum.intersectsObject( object ) ) {
+
+						const geometry = objects.update( object );
+						const material = object.material;
+
+						if ( sortObjects ) {
+
+							if ( object.boundingSphere !== undefined ) {
+
+								if ( object.boundingSphere === null ) object.computeBoundingSphere();
+								_vector4.copy( object.boundingSphere.center );
+
+							} else {
+
+								if ( geometry.boundingSphere === null ) geometry.computeBoundingSphere();
+								_vector4.copy( geometry.boundingSphere.center );
+
+							}
+
+							_vector4
+								.applyMatrix4( object.matrixWorld )
+								.applyMatrix4( _projScreenMatrix );
+
+						}
+
+						if ( Array.isArray( material ) ) {
+
+							const groups = geometry.groups;
+
+							for ( let i = 0, l = groups.length; i < l; i ++ ) {
+
+								const group = groups[ i ];
+								const groupMaterial = material[ group.materialIndex ];
+
+								if ( groupMaterial && groupMaterial.visible ) {
+
+									currentRenderList.push( object, geometry, groupMaterial, groupOrder, _vector4.z, group );
+
+								}
+
+							}
+
+						} else if ( material.visible ) {
+
+							currentRenderList.push( object, geometry, material, groupOrder, _vector4.z, null );
+
+						}
+
+					}
+
+				}
+
+			}
+
+			const children = object.children;
+
+			for ( let i = 0, l = children.length; i < l; i ++ ) {
+
+				projectObject( children[ i ], camera, groupOrder, sortObjects );
+
+			}
+
+		}
+
+		function renderScene( currentRenderList, scene, camera, viewport ) {
+
+			const opaqueObjects = currentRenderList.opaque;
+			const transmissiveObjects = currentRenderList.transmissive;
+			const transparentObjects = currentRenderList.transparent;
+
+			currentRenderState.setupLightsView( camera );
+
+			if ( _clippingEnabled === true ) clipping.setGlobalState( _this.clippingPlanes, camera );
+
+			if ( viewport ) state.viewport( _currentViewport.copy( viewport ) );
+
+			if ( opaqueObjects.length > 0 ) renderObjects( opaqueObjects, scene, camera );
+			if ( transmissiveObjects.length > 0 ) renderObjects( transmissiveObjects, scene, camera );
+			if ( transparentObjects.length > 0 ) renderObjects( transparentObjects, scene, camera );
+
+			// Ensure depth buffer writing is enabled so it can be cleared on next render
+
+			state.buffers.depth.setTest( true );
+			state.buffers.depth.setMask( true );
+			state.buffers.color.setMask( true );
+
+			state.setPolygonOffset( false );
+
+		}
+
+		function renderTransmissionPass( opaqueObjects, transmissiveObjects, scene, camera ) {
+
+			const overrideMaterial = scene.isScene === true ? scene.overrideMaterial : null;
+
+			if ( overrideMaterial !== null ) {
+
+				return;
+
+			}
+
+			if ( currentRenderState.state.transmissionRenderTarget[ camera.id ] === undefined ) {
+
+				currentRenderState.state.transmissionRenderTarget[ camera.id ] = new WebGLRenderTarget( 1, 1, {
+					generateMipmaps: true,
+					type: ( extensions.has( 'EXT_color_buffer_half_float' ) || extensions.has( 'EXT_color_buffer_float' ) ) ? HalfFloatType : UnsignedByteType,
+					minFilter: LinearMipmapLinearFilter,
+					samples: 4,
+					stencilBuffer: stencil,
+					resolveDepthBuffer: false,
+					resolveStencilBuffer: false,
+					colorSpace: ColorManagement.workingColorSpace,
+				} );
+
+				// debug
+
+				/*
+				const geometry = new PlaneGeometry();
+				const material = new MeshBasicMaterial( { map: _transmissionRenderTarget.texture } );
+
+				const mesh = new Mesh( geometry, material );
+				scene.add( mesh );
+				*/
+
+			}
+
+			const transmissionRenderTarget = currentRenderState.state.transmissionRenderTarget[ camera.id ];
+
+			const activeViewport = camera.viewport || _currentViewport;
+			transmissionRenderTarget.setSize( activeViewport.z, activeViewport.w );
+
+			//
+
+			const currentRenderTarget = _this.getRenderTarget();
+			_this.setRenderTarget( transmissionRenderTarget );
+
+			_this.getClearColor( _currentClearColor );
+			_currentClearAlpha = _this.getClearAlpha();
+			if ( _currentClearAlpha < 1 ) _this.setClearColor( 0xffffff, 0.5 );
+
+			_this.clear();
+
+			if ( _renderBackground ) background.render( scene );
+
+			// Turn off the features which can affect the frag color for opaque objects pass.
+			// Otherwise they are applied twice in opaque objects pass and transmission objects pass.
+			const currentToneMapping = _this.toneMapping;
+			_this.toneMapping = NoToneMapping;
+
+			// Remove viewport from camera to avoid nested render calls resetting viewport to it (e.g Reflector).
+			// Transmission render pass requires viewport to match the transmissionRenderTarget.
+			const currentCameraViewport = camera.viewport;
+			if ( camera.viewport !== undefined ) camera.viewport = undefined;
+
+			currentRenderState.setupLightsView( camera );
+
+			if ( _clippingEnabled === true ) clipping.setGlobalState( _this.clippingPlanes, camera );
+
+			renderObjects( opaqueObjects, scene, camera );
+
+			textures.updateMultisampleRenderTarget( transmissionRenderTarget );
+			textures.updateRenderTargetMipmap( transmissionRenderTarget );
+
+			if ( extensions.has( 'WEBGL_multisampled_render_to_texture' ) === false ) { // see #28131
+
+				let renderTargetNeedsUpdate = false;
+
+				for ( let i = 0, l = transmissiveObjects.length; i < l; i ++ ) {
+
+					const renderItem = transmissiveObjects[ i ];
+
+					const object = renderItem.object;
+					const geometry = renderItem.geometry;
+					const material = renderItem.material;
+					const group = renderItem.group;
+
+					if ( material.side === DoubleSide && object.layers.test( camera.layers ) ) {
+
+						const currentSide = material.side;
+
+						material.side = BackSide;
+						material.needsUpdate = true;
+
+						renderObject( object, scene, camera, geometry, material, group );
+
+						material.side = currentSide;
+						material.needsUpdate = true;
+
+						renderTargetNeedsUpdate = true;
+
+					}
+
+				}
+
+				if ( renderTargetNeedsUpdate === true ) {
+
+					textures.updateMultisampleRenderTarget( transmissionRenderTarget );
+					textures.updateRenderTargetMipmap( transmissionRenderTarget );
+
+				}
+
+			}
+
+			_this.setRenderTarget( currentRenderTarget );
+
+			_this.setClearColor( _currentClearColor, _currentClearAlpha );
+
+			if ( currentCameraViewport !== undefined ) camera.viewport = currentCameraViewport;
+
+			_this.toneMapping = currentToneMapping;
+
+		}
+
+		function renderObjects( renderList, scene, camera ) {
+
+			const overrideMaterial = scene.isScene === true ? scene.overrideMaterial : null;
+
+			for ( let i = 0, l = renderList.length; i < l; i ++ ) {
+
+				const renderItem = renderList[ i ];
+
+				const object = renderItem.object;
+				const geometry = renderItem.geometry;
+				const material = overrideMaterial === null ? renderItem.material : overrideMaterial;
+				const group = renderItem.group;
+
+				if ( object.layers.test( camera.layers ) ) {
+
+					renderObject( object, scene, camera, geometry, material, group );
+
+				}
+
+			}
+
+		}
+
+		function renderObject( object, scene, camera, geometry, material, group ) {
+
+			object.onBeforeRender( _this, scene, camera, geometry, material, group );
+
+			object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
+			object.normalMatrix.getNormalMatrix( object.modelViewMatrix );
+
+			material.onBeforeRender( _this, scene, camera, geometry, object, group );
+
+			if ( material.transparent === true && material.side === DoubleSide && material.forceSinglePass === false ) {
+
+				material.side = BackSide;
+				material.needsUpdate = true;
+				_this.renderBufferDirect( camera, scene, geometry, material, object, group );
+
+				material.side = FrontSide;
+				material.needsUpdate = true;
+				_this.renderBufferDirect( camera, scene, geometry, material, object, group );
+
+				material.side = DoubleSide;
+
+			} else {
+
+				_this.renderBufferDirect( camera, scene, geometry, material, object, group );
+
+			}
+
+			object.onAfterRender( _this, scene, camera, geometry, material, group );
+
+		}
+
+		function getProgram( material, scene, object ) {
+
+			if ( scene.isScene !== true ) scene = _emptyScene; // scene could be a Mesh, Line, Points, ...
+
+			const materialProperties = properties.get( material );
+
+			const lights = currentRenderState.state.lights;
+			const shadowsArray = currentRenderState.state.shadowsArray;
+
+			const lightsStateVersion = lights.state.version;
+
+			const parameters = programCache.getParameters( material, lights.state, shadowsArray, scene, object );
+			const programCacheKey = programCache.getProgramCacheKey( parameters );
+
+			let programs = materialProperties.programs;
+
+			// always update environment and fog - changing these trigger an getProgram call, but it's possible that the program doesn't change
+
+			materialProperties.environment = material.isMeshStandardMaterial ? scene.environment : null;
+			materialProperties.fog = scene.fog;
+			materialProperties.envMap = ( material.isMeshStandardMaterial ? cubeuvmaps : cubemaps ).get( material.envMap || materialProperties.environment );
+			materialProperties.envMapRotation = ( materialProperties.environment !== null && material.envMap === null ) ? scene.environmentRotation : material.envMapRotation;
+
+			if ( programs === undefined ) {
+
+				// new material
+
+				material.addEventListener( 'dispose', onMaterialDispose );
+
+				programs = new Map();
+				materialProperties.programs = programs;
+
+			}
+
+			let program = programs.get( programCacheKey );
+
+			if ( program !== undefined ) {
+
+				// early out if program and light state is identical
+
+				if ( materialProperties.currentProgram === program && materialProperties.lightsStateVersion === lightsStateVersion ) {
+
+					updateCommonMaterialProperties( material, parameters );
+
+					return program;
+
+				}
+
+			} else {
+
+				parameters.uniforms = programCache.getUniforms( material );
+
+				material.onBeforeCompile( parameters, _this );
+
+				program = programCache.acquireProgram( parameters, programCacheKey );
+				programs.set( programCacheKey, program );
+
+				materialProperties.uniforms = parameters.uniforms;
+
+			}
+
+			const uniforms = materialProperties.uniforms;
+
+			if ( ( ! material.isShaderMaterial && ! material.isRawShaderMaterial ) || material.clipping === true ) {
+
+				uniforms.clippingPlanes = clipping.uniform;
+
+			}
+
+			updateCommonMaterialProperties( material, parameters );
+
+			// store the light setup it was created for
+
+			materialProperties.needsLights = materialNeedsLights( material );
+			materialProperties.lightsStateVersion = lightsStateVersion;
+
+			if ( materialProperties.needsLights ) {
+
+				// wire up the material to this renderer's lighting state
+
+				uniforms.ambientLightColor.value = lights.state.ambient;
+				uniforms.lightProbe.value = lights.state.probe;
+				uniforms.directionalLights.value = lights.state.directional;
+				uniforms.directionalLightShadows.value = lights.state.directionalShadow;
+				uniforms.spotLights.value = lights.state.spot;
+				uniforms.spotLightShadows.value = lights.state.spotShadow;
+				uniforms.rectAreaLights.value = lights.state.rectArea;
+				uniforms.ltc_1.value = lights.state.rectAreaLTC1;
+				uniforms.ltc_2.value = lights.state.rectAreaLTC2;
+				uniforms.pointLights.value = lights.state.point;
+				uniforms.pointLightShadows.value = lights.state.pointShadow;
+				uniforms.hemisphereLights.value = lights.state.hemi;
+
+				uniforms.directionalShadowMap.value = lights.state.directionalShadowMap;
+				uniforms.directionalShadowMatrix.value = lights.state.directionalShadowMatrix;
+				uniforms.spotShadowMap.value = lights.state.spotShadowMap;
+				uniforms.spotLightMatrix.value = lights.state.spotLightMatrix;
+				uniforms.spotLightMap.value = lights.state.spotLightMap;
+				uniforms.pointShadowMap.value = lights.state.pointShadowMap;
+				uniforms.pointShadowMatrix.value = lights.state.pointShadowMatrix;
+				// TODO (abelnation): add area lights shadow info to uniforms
+
+			}
+
+			materialProperties.currentProgram = program;
+			materialProperties.uniformsList = null;
+
+			return program;
+
+		}
+
+		function getUniformList( materialProperties ) {
+
+			if ( materialProperties.uniformsList === null ) {
+
+				const progUniforms = materialProperties.currentProgram.getUniforms();
+				materialProperties.uniformsList = WebGLUniforms.seqWithValue( progUniforms.seq, materialProperties.uniforms );
+
+			}
+
+			return materialProperties.uniformsList;
+
+		}
+
+		function updateCommonMaterialProperties( material, parameters ) {
+
+			const materialProperties = properties.get( material );
+
+			materialProperties.outputColorSpace = parameters.outputColorSpace;
+			materialProperties.batching = parameters.batching;
+			materialProperties.batchingColor = parameters.batchingColor;
+			materialProperties.instancing = parameters.instancing;
+			materialProperties.instancingColor = parameters.instancingColor;
+			materialProperties.instancingMorph = parameters.instancingMorph;
+			materialProperties.skinning = parameters.skinning;
+			materialProperties.morphTargets = parameters.morphTargets;
+			materialProperties.morphNormals = parameters.morphNormals;
+			materialProperties.morphColors = parameters.morphColors;
+			materialProperties.morphTargetsCount = parameters.morphTargetsCount;
+			materialProperties.numClippingPlanes = parameters.numClippingPlanes;
+			materialProperties.numIntersection = parameters.numClipIntersection;
+			materialProperties.vertexAlphas = parameters.vertexAlphas;
+			materialProperties.vertexTangents = parameters.vertexTangents;
+			materialProperties.toneMapping = parameters.toneMapping;
+
+		}
+
+		function setProgram( camera, scene, geometry, material, object ) {
+
+			if ( scene.isScene !== true ) scene = _emptyScene; // scene could be a Mesh, Line, Points, ...
+
+			textures.resetTextureUnits();
+
+			const fog = scene.fog;
+			const environment = material.isMeshStandardMaterial ? scene.environment : null;
+			const colorSpace = ( _currentRenderTarget === null ) ? _this.outputColorSpace : ( _currentRenderTarget.isXRRenderTarget === true ? _currentRenderTarget.texture.colorSpace : LinearSRGBColorSpace );
+			const envMap = ( material.isMeshStandardMaterial ? cubeuvmaps : cubemaps ).get( material.envMap || environment );
+			const vertexAlphas = material.vertexColors === true && !! geometry.attributes.color && geometry.attributes.color.itemSize === 4;
+			const vertexTangents = !! geometry.attributes.tangent && ( !! material.normalMap || material.anisotropy > 0 );
+			const morphTargets = !! geometry.morphAttributes.position;
+			const morphNormals = !! geometry.morphAttributes.normal;
+			const morphColors = !! geometry.morphAttributes.color;
+
+			let toneMapping = NoToneMapping;
+
+			if ( material.toneMapped ) {
+
+				if ( _currentRenderTarget === null || _currentRenderTarget.isXRRenderTarget === true ) {
+
+					toneMapping = _this.toneMapping;
+
+				}
+
+			}
+
+			const morphAttribute = geometry.morphAttributes.position || geometry.morphAttributes.normal || geometry.morphAttributes.color;
+			const morphTargetsCount = ( morphAttribute !== undefined ) ? morphAttribute.length : 0;
+
+			const materialProperties = properties.get( material );
+			const lights = currentRenderState.state.lights;
+
+			if ( _clippingEnabled === true ) {
+
+				if ( _localClippingEnabled === true || camera !== _currentCamera ) {
+
+					const useCache =
+						camera === _currentCamera &&
+						material.id === _currentMaterialId;
+
+					// we might want to call this function with some ClippingGroup
+					// object instead of the material, once it becomes feasible
+					// (#8465, #8379)
+					clipping.setState( material, camera, useCache );
+
+				}
+
+			}
+
+			//
+
+			let needsProgramChange = false;
+
+			if ( material.version === materialProperties.__version ) {
+
+				if ( materialProperties.needsLights && ( materialProperties.lightsStateVersion !== lights.state.version ) ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.outputColorSpace !== colorSpace ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isBatchedMesh && materialProperties.batching === false ) {
+
+					needsProgramChange = true;
+
+				} else if ( ! object.isBatchedMesh && materialProperties.batching === true ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isBatchedMesh && materialProperties.batchingColor === true && object.colorTexture === null ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isBatchedMesh && materialProperties.batchingColor === false && object.colorTexture !== null ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isInstancedMesh && materialProperties.instancing === false ) {
+
+					needsProgramChange = true;
+
+				} else if ( ! object.isInstancedMesh && materialProperties.instancing === true ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isSkinnedMesh && materialProperties.skinning === false ) {
+
+					needsProgramChange = true;
+
+				} else if ( ! object.isSkinnedMesh && materialProperties.skinning === true ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isInstancedMesh && materialProperties.instancingColor === true && object.instanceColor === null ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isInstancedMesh && materialProperties.instancingColor === false && object.instanceColor !== null ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isInstancedMesh && materialProperties.instancingMorph === true && object.morphTexture === null ) {
+
+					needsProgramChange = true;
+
+				} else if ( object.isInstancedMesh && materialProperties.instancingMorph === false && object.morphTexture !== null ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.envMap !== envMap ) {
+
+					needsProgramChange = true;
+
+				} else if ( material.fog === true && materialProperties.fog !== fog ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.numClippingPlanes !== undefined &&
+					( materialProperties.numClippingPlanes !== clipping.numPlanes ||
+					materialProperties.numIntersection !== clipping.numIntersection ) ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.vertexAlphas !== vertexAlphas ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.vertexTangents !== vertexTangents ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.morphTargets !== morphTargets ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.morphNormals !== morphNormals ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.morphColors !== morphColors ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.toneMapping !== toneMapping ) {
+
+					needsProgramChange = true;
+
+				} else if ( materialProperties.morphTargetsCount !== morphTargetsCount ) {
+
+					needsProgramChange = true;
+
+				}
+
+			} else {
+
+				needsProgramChange = true;
+				materialProperties.__version = material.version;
+
+			}
+
+			//
+
+			let program = materialProperties.currentProgram;
+
+			if ( needsProgramChange === true ) {
+
+				program = getProgram( material, scene, object );
+
+			}
+
+			let refreshProgram = false;
+			let refreshMaterial = false;
+			let refreshLights = false;
+
+			const p_uniforms = program.getUniforms(),
+				m_uniforms = materialProperties.uniforms;
+
+			if ( state.useProgram( program.program ) ) {
+
+				refreshProgram = true;
+				refreshMaterial = true;
+				refreshLights = true;
+
+			}
+
+			if ( material.id !== _currentMaterialId ) {
+
+				_currentMaterialId = material.id;
+
+				refreshMaterial = true;
+
+			}
+
+			if ( refreshProgram || _currentCamera !== camera ) {
+
+				// common camera uniforms
+
+				if ( capabilities.reverseDepthBuffer ) {
+
+					_currentProjectionMatrix.copy( camera.projectionMatrix );
+
+					toNormalizedProjectionMatrix( _currentProjectionMatrix );
+					toReversedProjectionMatrix( _currentProjectionMatrix );
+
+					p_uniforms.setValue( _gl, 'projectionMatrix', _currentProjectionMatrix );
+
+				} else {
+
+					p_uniforms.setValue( _gl, 'projectionMatrix', camera.projectionMatrix );
+
+				}
+
+				p_uniforms.setValue( _gl, 'viewMatrix', camera.matrixWorldInverse );
+
+				const uCamPos = p_uniforms.map.cameraPosition;
+
+				if ( uCamPos !== undefined ) {
+
+					uCamPos.setValue( _gl, _vector3.setFromMatrixPosition( camera.matrixWorld ) );
+
+				}
+
+				if ( capabilities.logarithmicDepthBuffer ) {
+
+					p_uniforms.setValue( _gl, 'logDepthBufFC',
+						2.0 / ( Math.log( camera.far + 1.0 ) / Math.LN2 ) );
+
+				}
+
+				// consider moving isOrthographic to UniformLib and WebGLMaterials, see https://github.com/mrdoob/three.js/pull/26467#issuecomment-1645185067
+
+				if ( material.isMeshPhongMaterial ||
+					material.isMeshToonMaterial ||
+					material.isMeshLambertMaterial ||
+					material.isMeshBasicMaterial ||
+					material.isMeshStandardMaterial ||
+					material.isShaderMaterial ) {
+
+					p_uniforms.setValue( _gl, 'isOrthographic', camera.isOrthographicCamera === true );
+
+				}
+
+				if ( _currentCamera !== camera ) {
+
+					_currentCamera = camera;
+
+					// lighting uniforms depend on the camera so enforce an update
+					// now, in case this material supports lights - or later, when
+					// the next material that does gets activated:
+
+					refreshMaterial = true;		// set to true on material change
+					refreshLights = true;		// remains set until update done
+
+				}
+
+			}
+
+			// skinning and morph target uniforms must be set even if material didn't change
+			// auto-setting of texture unit for bone and morph texture must go before other textures
+			// otherwise textures used for skinning and morphing can take over texture units reserved for other material textures
+
+			if ( object.isSkinnedMesh ) {
+
+				p_uniforms.setOptional( _gl, object, 'bindMatrix' );
+				p_uniforms.setOptional( _gl, object, 'bindMatrixInverse' );
+
+				const skeleton = object.skeleton;
+
+				if ( skeleton ) {
+
+					if ( skeleton.boneTexture === null ) skeleton.computeBoneTexture();
+
+					p_uniforms.setValue( _gl, 'boneTexture', skeleton.boneTexture, textures );
+
+				}
+
+			}
+
+			if ( object.isBatchedMesh ) {
+
+				p_uniforms.setOptional( _gl, object, 'batchingTexture' );
+				p_uniforms.setValue( _gl, 'batchingTexture', object._matricesTexture, textures );
+
+				p_uniforms.setOptional( _gl, object, 'batchingIdTexture' );
+				p_uniforms.setValue( _gl, 'batchingIdTexture', object._indirectTexture, textures );
+
+				p_uniforms.setOptional( _gl, object, 'batchingColorTexture' );
+				if ( object._colorsTexture !== null ) {
+
+					p_uniforms.setValue( _gl, 'batchingColorTexture', object._colorsTexture, textures );
+
+				}
+
+			}
+
+			const morphAttributes = geometry.morphAttributes;
+
+			if ( morphAttributes.position !== undefined || morphAttributes.normal !== undefined || ( morphAttributes.color !== undefined ) ) {
+
+				morphtargets.update( object, geometry, program );
+
+			}
+
+			if ( refreshMaterial || materialProperties.receiveShadow !== object.receiveShadow ) {
+
+				materialProperties.receiveShadow = object.receiveShadow;
+				p_uniforms.setValue( _gl, 'receiveShadow', object.receiveShadow );
+
+			}
+
+			// https://github.com/mrdoob/three.js/pull/24467#issuecomment-1209031512
+
+			if ( material.isMeshGouraudMaterial && material.envMap !== null ) {
+
+				m_uniforms.envMap.value = envMap;
+
+				m_uniforms.flipEnvMap.value = ( envMap.isCubeTexture && envMap.isRenderTargetTexture === false ) ? - 1 : 1;
+
+			}
+
+			if ( material.isMeshStandardMaterial && material.envMap === null && scene.environment !== null ) {
+
+				m_uniforms.envMapIntensity.value = scene.environmentIntensity;
+
+			}
+
+			if ( refreshMaterial ) {
+
+				p_uniforms.setValue( _gl, 'toneMappingExposure', _this.toneMappingExposure );
+
+				if ( materialProperties.needsLights ) {
+
+					// the current material requires lighting info
+
+					// note: all lighting uniforms are always set correctly
+					// they simply reference the renderer's state for their
+					// values
+					//
+					// use the current material's .needsUpdate flags to set
+					// the GL state when required
+
+					markUniformsLightsNeedsUpdate( m_uniforms, refreshLights );
+
+				}
+
+				// refresh uniforms common to several materials
+
+				if ( fog && material.fog === true ) {
+
+					materials.refreshFogUniforms( m_uniforms, fog );
+
+				}
+
+				materials.refreshMaterialUniforms( m_uniforms, material, _pixelRatio, _height, currentRenderState.state.transmissionRenderTarget[ camera.id ] );
+
+				WebGLUniforms.upload( _gl, getUniformList( materialProperties ), m_uniforms, textures );
+
+			}
+
+			if ( material.isShaderMaterial && material.uniformsNeedUpdate === true ) {
+
+				WebGLUniforms.upload( _gl, getUniformList( materialProperties ), m_uniforms, textures );
+				material.uniformsNeedUpdate = false;
+
+			}
+
+			if ( material.isSpriteMaterial ) {
+
+				p_uniforms.setValue( _gl, 'center', object.center );
+
+			}
+
+			// common matrices
+
+			p_uniforms.setValue( _gl, 'modelViewMatrix', object.modelViewMatrix );
+			p_uniforms.setValue( _gl, 'normalMatrix', object.normalMatrix );
+			p_uniforms.setValue( _gl, 'modelMatrix', object.matrixWorld );
+
+			// UBOs
+
+			if ( material.isShaderMaterial || material.isRawShaderMaterial ) {
+
+				const groups = material.uniformsGroups;
+
+				for ( let i = 0, l = groups.length; i < l; i ++ ) {
+
+					const group = groups[ i ];
+
+					uniformsGroups.update( group, program );
+					uniformsGroups.bind( group, program );
+
+				}
+
+			}
+
+			return program;
+
+		}
+
+		// If uniforms are marked as clean, they don't need to be loaded to the GPU.
+
+		function markUniformsLightsNeedsUpdate( uniforms, value ) {
+
+			uniforms.ambientLightColor.needsUpdate = value;
+			uniforms.lightProbe.needsUpdate = value;
+
+			uniforms.directionalLights.needsUpdate = value;
+			uniforms.directionalLightShadows.needsUpdate = value;
+			uniforms.pointLights.needsUpdate = value;
+			uniforms.pointLightShadows.needsUpdate = value;
+			uniforms.spotLights.needsUpdate = value;
+			uniforms.spotLightShadows.needsUpdate = value;
+			uniforms.rectAreaLights.needsUpdate = value;
+			uniforms.hemisphereLights.needsUpdate = value;
+
+		}
+
+		function materialNeedsLights( material ) {
+
+			return material.isMeshLambertMaterial || material.isMeshToonMaterial || material.isMeshPhongMaterial ||
+				material.isMeshStandardMaterial || material.isShadowMaterial ||
+				( material.isShaderMaterial && material.lights === true );
+
+		}
+
+		this.getActiveCubeFace = function () {
+
+			return _currentActiveCubeFace;
+
+		};
+
+		this.getActiveMipmapLevel = function () {
+
+			return _currentActiveMipmapLevel;
+
+		};
+
+		this.getRenderTarget = function () {
+
+			return _currentRenderTarget;
+
+		};
+
+		this.setRenderTargetTextures = function ( renderTarget, colorTexture, depthTexture ) {
+
+			properties.get( renderTarget.texture ).__webglTexture = colorTexture;
+			properties.get( renderTarget.depthTexture ).__webglTexture = depthTexture;
+
+			const renderTargetProperties = properties.get( renderTarget );
+			renderTargetProperties.__hasExternalTextures = true;
+
+			renderTargetProperties.__autoAllocateDepthBuffer = depthTexture === undefined;
+
+			if ( ! renderTargetProperties.__autoAllocateDepthBuffer ) {
+
+				// The multisample_render_to_texture extension doesn't work properly if there
+				// are midframe flushes and an external depth buffer. Disable use of the extension.
+				if ( extensions.has( 'WEBGL_multisampled_render_to_texture' ) === true ) {
+
+					console.warn( 'THREE.WebGLRenderer: Render-to-texture extension was disabled because an external texture was provided' );
+					renderTargetProperties.__useRenderToTexture = false;
+
+				}
+
+			}
+
+		};
+
+		this.setRenderTargetFramebuffer = function ( renderTarget, defaultFramebuffer ) {
+
+			const renderTargetProperties = properties.get( renderTarget );
+			renderTargetProperties.__webglFramebuffer = defaultFramebuffer;
+			renderTargetProperties.__useDefaultFramebuffer = defaultFramebuffer === undefined;
+
+		};
+
+		this.setRenderTarget = function ( renderTarget, activeCubeFace = 0, activeMipmapLevel = 0 ) {
+
+			_currentRenderTarget = renderTarget;
+			_currentActiveCubeFace = activeCubeFace;
+			_currentActiveMipmapLevel = activeMipmapLevel;
+
+			let useDefaultFramebuffer = true;
+			let framebuffer = null;
+			let isCube = false;
+			let isRenderTarget3D = false;
+
+			if ( renderTarget ) {
+
+				const renderTargetProperties = properties.get( renderTarget );
+
+				if ( renderTargetProperties.__useDefaultFramebuffer !== undefined ) {
+
+					// We need to make sure to rebind the framebuffer.
+					state.bindFramebuffer( _gl.FRAMEBUFFER, null );
+					useDefaultFramebuffer = false;
+
+				} else if ( renderTargetProperties.__webglFramebuffer === undefined ) {
+
+					textures.setupRenderTarget( renderTarget );
+
+				} else if ( renderTargetProperties.__hasExternalTextures ) {
+
+					// Color and depth texture must be rebound in order for the swapchain to update.
+					textures.rebindTextures( renderTarget, properties.get( renderTarget.texture ).__webglTexture, properties.get( renderTarget.depthTexture ).__webglTexture );
+
+				} else if ( renderTarget.depthBuffer ) {
+
+					// check if the depth texture is already bound to the frame buffer and that it's been initialized
+					const depthTexture = renderTarget.depthTexture;
+					if ( renderTargetProperties.__boundDepthTexture !== depthTexture ) {
+
+						// check if the depth texture is compatible
+						if (
+							depthTexture !== null &&
+							properties.has( depthTexture ) &&
+							( renderTarget.width !== depthTexture.image.width || renderTarget.height !== depthTexture.image.height )
+						) {
+
+							throw new Error( 'WebGLRenderTarget: Attached DepthTexture is initialized to the incorrect size.' );
+
+						}
+
+						// Swap the depth buffer to the currently attached one
+						textures.setupDepthRenderbuffer( renderTarget );
+
+					}
+
+				}
+
+				const texture = renderTarget.texture;
+
+				if ( texture.isData3DTexture || texture.isDataArrayTexture || texture.isCompressedArrayTexture ) {
+
+					isRenderTarget3D = true;
+
+				}
+
+				const __webglFramebuffer = properties.get( renderTarget ).__webglFramebuffer;
+
+				if ( renderTarget.isWebGLCubeRenderTarget ) {
+
+					if ( Array.isArray( __webglFramebuffer[ activeCubeFace ] ) ) {
+
+						framebuffer = __webglFramebuffer[ activeCubeFace ][ activeMipmapLevel ];
+
+					} else {
+
+						framebuffer = __webglFramebuffer[ activeCubeFace ];
+
+					}
+
+					isCube = true;
+
+				} else if ( ( renderTarget.samples > 0 ) && textures.useMultisampledRTT( renderTarget ) === false ) {
+
+					framebuffer = properties.get( renderTarget ).__webglMultisampledFramebuffer;
+
+				} else {
+
+					if ( Array.isArray( __webglFramebuffer ) ) {
+
+						framebuffer = __webglFramebuffer[ activeMipmapLevel ];
+
+					} else {
+
+						framebuffer = __webglFramebuffer;
+
+					}
+
+				}
+
+				_currentViewport.copy( renderTarget.viewport );
+				_currentScissor.copy( renderTarget.scissor );
+				_currentScissorTest = renderTarget.scissorTest;
+
+			} else {
+
+				_currentViewport.copy( _viewport ).multiplyScalar( _pixelRatio ).floor();
+				_currentScissor.copy( _scissor ).multiplyScalar( _pixelRatio ).floor();
+				_currentScissorTest = _scissorTest;
+
+			}
+
+			const framebufferBound = state.bindFramebuffer( _gl.FRAMEBUFFER, framebuffer );
+
+			if ( framebufferBound && useDefaultFramebuffer ) {
+
+				state.drawBuffers( renderTarget, framebuffer );
+
+			}
+
+			state.viewport( _currentViewport );
+			state.scissor( _currentScissor );
+			state.setScissorTest( _currentScissorTest );
+
+			if ( isCube ) {
+
+				const textureProperties = properties.get( renderTarget.texture );
+				_gl.framebufferTexture2D( _gl.FRAMEBUFFER, _gl.COLOR_ATTACHMENT0, _gl.TEXTURE_CUBE_MAP_POSITIVE_X + activeCubeFace, textureProperties.__webglTexture, activeMipmapLevel );
+
+			} else if ( isRenderTarget3D ) {
+
+				const textureProperties = properties.get( renderTarget.texture );
+				const layer = activeCubeFace || 0;
+				_gl.framebufferTextureLayer( _gl.FRAMEBUFFER, _gl.COLOR_ATTACHMENT0, textureProperties.__webglTexture, activeMipmapLevel || 0, layer );
+
+			}
+
+			_currentMaterialId = - 1; // reset current material to ensure correct uniform bindings
+
+		};
+
+		this.readRenderTargetPixels = function ( renderTarget, x, y, width, height, buffer, activeCubeFaceIndex ) {
+
+			if ( ! ( renderTarget && renderTarget.isWebGLRenderTarget ) ) {
+
+				console.error( 'THREE.WebGLRenderer.readRenderTargetPixels: renderTarget is not THREE.WebGLRenderTarget.' );
+				return;
+
+			}
+
+			let framebuffer = properties.get( renderTarget ).__webglFramebuffer;
+
+			if ( renderTarget.isWebGLCubeRenderTarget && activeCubeFaceIndex !== undefined ) {
+
+				framebuffer = framebuffer[ activeCubeFaceIndex ];
+
+			}
+
+			if ( framebuffer ) {
+
+				state.bindFramebuffer( _gl.FRAMEBUFFER, framebuffer );
+
+				try {
+
+					const texture = renderTarget.texture;
+					const textureFormat = texture.format;
+					const textureType = texture.type;
+
+					if ( ! capabilities.textureFormatReadable( textureFormat ) ) {
+
+						console.error( 'THREE.WebGLRenderer.readRenderTargetPixels: renderTarget is not in RGBA or implementation defined format.' );
+						return;
+
+					}
+
+					if ( ! capabilities.textureTypeReadable( textureType ) ) {
+
+						console.error( 'THREE.WebGLRenderer.readRenderTargetPixels: renderTarget is not in UnsignedByteType or implementation defined type.' );
+						return;
+
+					}
+
+					// the following if statement ensures valid read requests (no out-of-bounds pixels, see #8604)
+
+					if ( ( x >= 0 && x <= ( renderTarget.width - width ) ) && ( y >= 0 && y <= ( renderTarget.height - height ) ) ) {
+
+						_gl.readPixels( x, y, width, height, utils.convert( textureFormat ), utils.convert( textureType ), buffer );
+
+					}
+
+				} finally {
+
+					// restore framebuffer of current render target if necessary
+
+					const framebuffer = ( _currentRenderTarget !== null ) ? properties.get( _currentRenderTarget ).__webglFramebuffer : null;
+					state.bindFramebuffer( _gl.FRAMEBUFFER, framebuffer );
+
+				}
+
+			}
+
+		};
+
+		this.readRenderTargetPixelsAsync = async function ( renderTarget, x, y, width, height, buffer, activeCubeFaceIndex ) {
+
+			if ( ! ( renderTarget && renderTarget.isWebGLRenderTarget ) ) {
+
+				throw new Error( 'THREE.WebGLRenderer.readRenderTargetPixels: renderTarget is not THREE.WebGLRenderTarget.' );
+
+			}
+
+			let framebuffer = properties.get( renderTarget ).__webglFramebuffer;
+			if ( renderTarget.isWebGLCubeRenderTarget && activeCubeFaceIndex !== undefined ) {
+
+				framebuffer = framebuffer[ activeCubeFaceIndex ];
+
+			}
+
+			if ( framebuffer ) {
+
+				const texture = renderTarget.texture;
+				const textureFormat = texture.format;
+				const textureType = texture.type;
+
+				if ( ! capabilities.textureFormatReadable( textureFormat ) ) {
+
+					throw new Error( 'THREE.WebGLRenderer.readRenderTargetPixelsAsync: renderTarget is not in RGBA or implementation defined format.' );
+
+				}
+
+				if ( ! capabilities.textureTypeReadable( textureType ) ) {
+
+					throw new Error( 'THREE.WebGLRenderer.readRenderTargetPixelsAsync: renderTarget is not in UnsignedByteType or implementation defined type.' );
+
+				}
+
+				// the following if statement ensures valid read requests (no out-of-bounds pixels, see #8604)
+				if ( ( x >= 0 && x <= ( renderTarget.width - width ) ) && ( y >= 0 && y <= ( renderTarget.height - height ) ) ) {
+
+					// set the active frame buffer to the one we want to read
+					state.bindFramebuffer( _gl.FRAMEBUFFER, framebuffer );
+
+					const glBuffer = _gl.createBuffer();
+					_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, glBuffer );
+					_gl.bufferData( _gl.PIXEL_PACK_BUFFER, buffer.byteLength, _gl.STREAM_READ );
+					_gl.readPixels( x, y, width, height, utils.convert( textureFormat ), utils.convert( textureType ), 0 );
+
+					// reset the frame buffer to the currently set buffer before waiting
+					const currFramebuffer = _currentRenderTarget !== null ? properties.get( _currentRenderTarget ).__webglFramebuffer : null;
+					state.bindFramebuffer( _gl.FRAMEBUFFER, currFramebuffer );
+
+					// check if the commands have finished every 8 ms
+					const sync = _gl.fenceSync( _gl.SYNC_GPU_COMMANDS_COMPLETE, 0 );
+
+					_gl.flush();
+
+					await probeAsync( _gl, sync, 4 );
+
+					// read the data and delete the buffer
+					_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, glBuffer );
+					_gl.getBufferSubData( _gl.PIXEL_PACK_BUFFER, 0, buffer );
+					_gl.deleteBuffer( glBuffer );
+					_gl.deleteSync( sync );
+
+					return buffer;
+
+				} else {
+
+					throw new Error( 'THREE.WebGLRenderer.readRenderTargetPixelsAsync: requested read bounds are out of range.' );
+
+				}
+
+			}
+
+		};
+
+		this.copyFramebufferToTexture = function ( texture, position = null, level = 0 ) {
+
+			// support previous signature with position first
+			if ( texture.isTexture !== true ) {
+
+				// @deprecated, r165
+				warnOnce( 'WebGLRenderer: copyFramebufferToTexture function signature has changed.' );
+
+				position = arguments[ 0 ] || null;
+				texture = arguments[ 1 ];
+
+			}
+
+			const levelScale = Math.pow( 2, - level );
+			const width = Math.floor( texture.image.width * levelScale );
+			const height = Math.floor( texture.image.height * levelScale );
+
+			const x = position !== null ? position.x : 0;
+			const y = position !== null ? position.y : 0;
+
+			textures.setTexture2D( texture, 0 );
+
+			_gl.copyTexSubImage2D( _gl.TEXTURE_2D, level, 0, 0, x, y, width, height );
+
+			state.unbindTexture();
+
+		};
+
+		this.copyTextureToTexture = function ( srcTexture, dstTexture, srcRegion = null, dstPosition = null, level = 0 ) {
+
+			// support previous signature with dstPosition first
+			if ( srcTexture.isTexture !== true ) {
+
+				// @deprecated, r165
+				warnOnce( 'WebGLRenderer: copyTextureToTexture function signature has changed.' );
+
+				dstPosition = arguments[ 0 ] || null;
+				srcTexture = arguments[ 1 ];
+				dstTexture = arguments[ 2 ];
+				level = arguments[ 3 ] || 0;
+				srcRegion = null;
+
+			}
+
+			let width, height, minX, minY;
+			let dstX, dstY;
+			if ( srcRegion !== null ) {
+
+				width = srcRegion.max.x - srcRegion.min.x;
+				height = srcRegion.max.y - srcRegion.min.y;
+				minX = srcRegion.min.x;
+				minY = srcRegion.min.y;
+
+			} else {
+
+				width = srcTexture.image.width;
+				height = srcTexture.image.height;
+				minX = 0;
+				minY = 0;
+
+			}
+
+			if ( dstPosition !== null ) {
+
+				dstX = dstPosition.x;
+				dstY = dstPosition.y;
+
+			} else {
+
+				dstX = 0;
+				dstY = 0;
+
+			}
+
+			const glFormat = utils.convert( dstTexture.format );
+			const glType = utils.convert( dstTexture.type );
+
+			textures.setTexture2D( dstTexture, 0 );
+
+			// As another texture upload may have changed pixelStorei
+			// parameters, make sure they are correct for the dstTexture
+			_gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, dstTexture.flipY );
+			_gl.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, dstTexture.premultiplyAlpha );
+			_gl.pixelStorei( _gl.UNPACK_ALIGNMENT, dstTexture.unpackAlignment );
+
+			const currentUnpackRowLen = _gl.getParameter( _gl.UNPACK_ROW_LENGTH );
+			const currentUnpackImageHeight = _gl.getParameter( _gl.UNPACK_IMAGE_HEIGHT );
+			const currentUnpackSkipPixels = _gl.getParameter( _gl.UNPACK_SKIP_PIXELS );
+			const currentUnpackSkipRows = _gl.getParameter( _gl.UNPACK_SKIP_ROWS );
+			const currentUnpackSkipImages = _gl.getParameter( _gl.UNPACK_SKIP_IMAGES );
+
+			const image = srcTexture.isCompressedTexture ? srcTexture.mipmaps[ level ] : srcTexture.image;
+
+			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, image.width );
+			_gl.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, image.height );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, minX );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, minY );
+
+			if ( srcTexture.isDataTexture ) {
+
+				_gl.texSubImage2D( _gl.TEXTURE_2D, level, dstX, dstY, width, height, glFormat, glType, image.data );
+
+			} else {
+
+				if ( srcTexture.isCompressedTexture ) {
+
+					_gl.compressedTexSubImage2D( _gl.TEXTURE_2D, level, dstX, dstY, image.width, image.height, glFormat, image.data );
+
+				} else {
+
+					_gl.texSubImage2D( _gl.TEXTURE_2D, level, dstX, dstY, width, height, glFormat, glType, image );
+
+				}
+
+			}
+
+			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, currentUnpackRowLen );
+			_gl.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, currentUnpackImageHeight );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, currentUnpackSkipPixels );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, currentUnpackSkipRows );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_IMAGES, currentUnpackSkipImages );
+
+			// Generate mipmaps only when copying level 0
+			if ( level === 0 && dstTexture.generateMipmaps ) _gl.generateMipmap( _gl.TEXTURE_2D );
+
+			state.unbindTexture();
+
+		};
+
+		this.copyTextureToTexture3D = function ( srcTexture, dstTexture, srcRegion = null, dstPosition = null, level = 0 ) {
+
+			// support previous signature with source box first
+			if ( srcTexture.isTexture !== true ) {
+
+				// @deprecated, r165
+				warnOnce( 'WebGLRenderer: copyTextureToTexture3D function signature has changed.' );
+
+				srcRegion = arguments[ 0 ] || null;
+				dstPosition = arguments[ 1 ] || null;
+				srcTexture = arguments[ 2 ];
+				dstTexture = arguments[ 3 ];
+				level = arguments[ 4 ] || 0;
+
+			}
+
+			let width, height, depth, minX, minY, minZ;
+			let dstX, dstY, dstZ;
+			const image = srcTexture.isCompressedTexture ? srcTexture.mipmaps[ level ] : srcTexture.image;
+			if ( srcRegion !== null ) {
+
+				width = srcRegion.max.x - srcRegion.min.x;
+				height = srcRegion.max.y - srcRegion.min.y;
+				depth = srcRegion.max.z - srcRegion.min.z;
+				minX = srcRegion.min.x;
+				minY = srcRegion.min.y;
+				minZ = srcRegion.min.z;
+
+			} else {
+
+				width = image.width;
+				height = image.height;
+				depth = image.depth;
+				minX = 0;
+				minY = 0;
+				minZ = 0;
+
+			}
+
+			if ( dstPosition !== null ) {
+
+				dstX = dstPosition.x;
+				dstY = dstPosition.y;
+				dstZ = dstPosition.z;
+
+			} else {
+
+				dstX = 0;
+				dstY = 0;
+				dstZ = 0;
+
+			}
+
+			const glFormat = utils.convert( dstTexture.format );
+			const glType = utils.convert( dstTexture.type );
+			let glTarget;
+
+			if ( dstTexture.isData3DTexture ) {
+
+				textures.setTexture3D( dstTexture, 0 );
+				glTarget = _gl.TEXTURE_3D;
+
+			} else if ( dstTexture.isDataArrayTexture || dstTexture.isCompressedArrayTexture ) {
+
+				textures.setTexture2DArray( dstTexture, 0 );
+				glTarget = _gl.TEXTURE_2D_ARRAY;
+
+			} else {
+
+				console.warn( 'THREE.WebGLRenderer.copyTextureToTexture3D: only supports THREE.DataTexture3D and THREE.DataTexture2DArray.' );
+				return;
+
+			}
+
+			_gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, dstTexture.flipY );
+			_gl.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, dstTexture.premultiplyAlpha );
+			_gl.pixelStorei( _gl.UNPACK_ALIGNMENT, dstTexture.unpackAlignment );
+
+			const currentUnpackRowLen = _gl.getParameter( _gl.UNPACK_ROW_LENGTH );
+			const currentUnpackImageHeight = _gl.getParameter( _gl.UNPACK_IMAGE_HEIGHT );
+			const currentUnpackSkipPixels = _gl.getParameter( _gl.UNPACK_SKIP_PIXELS );
+			const currentUnpackSkipRows = _gl.getParameter( _gl.UNPACK_SKIP_ROWS );
+			const currentUnpackSkipImages = _gl.getParameter( _gl.UNPACK_SKIP_IMAGES );
+
+			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, image.width );
+			_gl.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, image.height );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, minX );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, minY );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_IMAGES, minZ );
+
+			if ( srcTexture.isDataTexture || srcTexture.isData3DTexture ) {
+
+				_gl.texSubImage3D( glTarget, level, dstX, dstY, dstZ, width, height, depth, glFormat, glType, image.data );
+
+			} else {
+
+				if ( dstTexture.isCompressedArrayTexture ) {
+
+					_gl.compressedTexSubImage3D( glTarget, level, dstX, dstY, dstZ, width, height, depth, glFormat, image.data );
+
+				} else {
+
+					_gl.texSubImage3D( glTarget, level, dstX, dstY, dstZ, width, height, depth, glFormat, glType, image );
+
+				}
+
+			}
+
+			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, currentUnpackRowLen );
+			_gl.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, currentUnpackImageHeight );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, currentUnpackSkipPixels );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, currentUnpackSkipRows );
+			_gl.pixelStorei( _gl.UNPACK_SKIP_IMAGES, currentUnpackSkipImages );
+
+			// Generate mipmaps only when copying level 0
+			if ( level === 0 && dstTexture.generateMipmaps ) _gl.generateMipmap( glTarget );
+
+			state.unbindTexture();
+
+		};
+
+		this.initRenderTarget = function ( target ) {
+
+			if ( properties.get( target ).__webglFramebuffer === undefined ) {
+
+				textures.setupRenderTarget( target );
+
+			}
+
+		};
+
+		this.initTexture = function ( texture ) {
+
+			if ( texture.isCubeTexture ) {
+
+				textures.setTextureCube( texture, 0 );
+
+			} else if ( texture.isData3DTexture ) {
+
+				textures.setTexture3D( texture, 0 );
+
+			} else if ( texture.isDataArrayTexture || texture.isCompressedArrayTexture ) {
+
+				textures.setTexture2DArray( texture, 0 );
+
+			} else {
+
+				textures.setTexture2D( texture, 0 );
+
+			}
+
+			state.unbindTexture();
+
+		};
+
+		this.resetState = function () {
+
+			_currentActiveCubeFace = 0;
+			_currentActiveMipmapLevel = 0;
+			_currentRenderTarget = null;
+
+			state.reset();
+			bindingStates.reset();
+
+		};
+
+		if ( typeof __THREE_DEVTOOLS__ !== 'undefined' ) {
+
+			__THREE_DEVTOOLS__.dispatchEvent( new CustomEvent( 'observe', { detail: this } ) );
+
+		}
+
+	}
+
+	get coordinateSystem() {
+
+		return WebGLCoordinateSystem;
+
+	}
+
+	get outputColorSpace() {
+
+		return this._outputColorSpace;
+
+	}
+
+	set outputColorSpace( colorSpace ) {
+
+		this._outputColorSpace = colorSpace;
+
+		const gl = this.getContext();
+		gl.drawingBufferColorSpace = colorSpace === DisplayP3ColorSpace ? 'display-p3' : 'srgb';
+		gl.unpackColorSpace = ColorManagement.workingColorSpace === LinearDisplayP3ColorSpace ? 'display-p3' : 'srgb';
+
+	}
+
+}
+
+class FogExp2 {
+
+	constructor( color, density = 0.00025 ) {
+
+		this.isFogExp2 = true;
+
+		this.name = '';
+
+		this.color = new Color( color );
+		this.density = density;
+
+	}
+
+	clone() {
+
+		return new FogExp2( this.color, this.density );
+
+	}
+
+	toJSON( /* meta */ ) {
+
+		return {
+			type: 'FogExp2',
+			name: this.name,
+			color: this.color.getHex(),
+			density: this.density
+		};
+
+	}
+
+}
+
+class Fog {
+
+	constructor( color, near = 1, far = 1000 ) {
+
+		this.isFog = true;
+
+		this.name = '';
+
+		this.color = new Color( color );
+
+		this.near = near;
+		this.far = far;
+
+	}
+
+	clone() {
+
+		return new Fog( this.color, this.near, this.far );
+
+	}
+
+	toJSON( /* meta */ ) {
+
+		return {
+			type: 'Fog',
+			name: this.name,
+			color: this.color.getHex(),
+			near: this.near,
+			far: this.far
+		};
+
+	}
+
+}
+
+class Scene extends Object3D {
+
+	constructor() {
+
+		super();
+
+		this.isScene = true;
+
+		this.type = 'Scene';
+
+		this.background = null;
+		this.environment = null;
+		this.fog = null;
+
+		this.backgroundBlurriness = 0;
+		this.backgroundIntensity = 1;
+		this.backgroundRotation = new Euler();
+
+		this.environmentIntensity = 1;
+		this.environmentRotation = new Euler();
+
+		this.overrideMaterial = null;
+
+		if ( typeof __THREE_DEVTOOLS__ !== 'undefined' ) {
+
+			__THREE_DEVTOOLS__.dispatchEvent( new CustomEvent( 'observe', { detail: this } ) );
+
+		}
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		if ( source.background !== null ) this.background = source.background.clone();
+		if ( source.environment !== null ) this.environment = source.environment.clone();
+		if ( source.fog !== null ) this.fog = source.fog.clone();
+
+		this.backgroundBlurriness = source.backgroundBlurriness;
+		this.backgroundIntensity = source.backgroundIntensity;
+		this.backgroundRotation.copy( source.backgroundRotation );
+
+		this.environmentIntensity = source.environmentIntensity;
+		this.environmentRotation.copy( source.environmentRotation );
+
+		if ( source.overrideMaterial !== null ) this.overrideMaterial = source.overrideMaterial.clone();
+
+		this.matrixAutoUpdate = source.matrixAutoUpdate;
+
+		return this;
+
+	}
+
+	toJSON( meta ) {
+
+		const data = super.toJSON( meta );
+
+		if ( this.fog !== null ) data.object.fog = this.fog.toJSON();
+
+		if ( this.backgroundBlurriness > 0 ) data.object.backgroundBlurriness = this.backgroundBlurriness;
+		if ( this.backgroundIntensity !== 1 ) data.object.backgroundIntensity = this.backgroundIntensity;
+		data.object.backgroundRotation = this.backgroundRotation.toArray();
+
+		if ( this.environmentIntensity !== 1 ) data.object.environmentIntensity = this.environmentIntensity;
+		data.object.environmentRotation = this.environmentRotation.toArray();
+
+		return data;
+
+	}
+
+}
+
+class InterleavedBuffer {
+
+	constructor( array, stride ) {
+
+		this.isInterleavedBuffer = true;
+
+		this.array = array;
+		this.stride = stride;
+		this.count = array !== undefined ? array.length / stride : 0;
+
+		this.usage = StaticDrawUsage;
+		this.updateRanges = [];
+
+		this.version = 0;
+
+		this.uuid = generateUUID();
+
+	}
+
+	onUploadCallback() {}
+
+	set needsUpdate( value ) {
+
+		if ( value === true ) this.version ++;
+
+	}
+
+	setUsage( value ) {
+
+		this.usage = value;
+
+		return this;
+
+	}
+
+	addUpdateRange( start, count ) {
+
+		this.updateRanges.push( { start, count } );
+
+	}
+
+	clearUpdateRanges() {
+
+		this.updateRanges.length = 0;
+
+	}
+
+	copy( source ) {
+
+		this.array = new source.array.constructor( source.array );
+		this.count = source.count;
+		this.stride = source.stride;
+		this.usage = source.usage;
+
+		return this;
+
+	}
+
+	copyAt( index1, attribute, index2 ) {
+
+		index1 *= this.stride;
+		index2 *= attribute.stride;
+
+		for ( let i = 0, l = this.stride; i < l; i ++ ) {
+
+			this.array[ index1 + i ] = attribute.array[ index2 + i ];
+
+		}
+
+		return this;
+
+	}
+
+	set( value, offset = 0 ) {
+
+		this.array.set( value, offset );
+
+		return this;
+
+	}
+
+	clone( data ) {
+
+		if ( data.arrayBuffers === undefined ) {
+
+			data.arrayBuffers = {};
+
+		}
+
+		if ( this.array.buffer._uuid === undefined ) {
+
+			this.array.buffer._uuid = generateUUID();
+
+		}
+
+		if ( data.arrayBuffers[ this.array.buffer._uuid ] === undefined ) {
+
+			data.arrayBuffers[ this.array.buffer._uuid ] = this.array.slice( 0 ).buffer;
+
+		}
+
+		const array = new this.array.constructor( data.arrayBuffers[ this.array.buffer._uuid ] );
+
+		const ib = new this.constructor( array, this.stride );
+		ib.setUsage( this.usage );
+
+		return ib;
+
+	}
+
+	onUpload( callback ) {
+
+		this.onUploadCallback = callback;
+
+		return this;
+
+	}
+
+	toJSON( data ) {
+
+		if ( data.arrayBuffers === undefined ) {
+
+			data.arrayBuffers = {};
+
+		}
+
+		// generate UUID for array buffer if necessary
+
+		if ( this.array.buffer._uuid === undefined ) {
+
+			this.array.buffer._uuid = generateUUID();
+
+		}
+
+		if ( data.arrayBuffers[ this.array.buffer._uuid ] === undefined ) {
+
+			data.arrayBuffers[ this.array.buffer._uuid ] = Array.from( new Uint32Array( this.array.buffer ) );
+
+		}
+
+		//
+
+		return {
+			uuid: this.uuid,
+			buffer: this.array.buffer._uuid,
+			type: this.array.constructor.name,
+			stride: this.stride
+		};
+
+	}
+
+}
+
+const _vector$6 = /*@__PURE__*/ new Vector3();
+
+class InterleavedBufferAttribute {
+
+	constructor( interleavedBuffer, itemSize, offset, normalized = false ) {
+
+		this.isInterleavedBufferAttribute = true;
+
+		this.name = '';
+
+		this.data = interleavedBuffer;
+		this.itemSize = itemSize;
+		this.offset = offset;
+
+		this.normalized = normalized;
+
+	}
+
+	get count() {
+
+		return this.data.count;
+
+	}
+
+	get array() {
+
+		return this.data.array;
+
+	}
+
+	set needsUpdate( value ) {
+
+		this.data.needsUpdate = value;
+
+	}
+
+	applyMatrix4( m ) {
+
+		for ( let i = 0, l = this.data.count; i < l; i ++ ) {
+
+			_vector$6.fromBufferAttribute( this, i );
+
+			_vector$6.applyMatrix4( m );
+
+			this.setXYZ( i, _vector$6.x, _vector$6.y, _vector$6.z );
+
+		}
+
+		return this;
+
+	}
+
+	applyNormalMatrix( m ) {
+
+		for ( let i = 0, l = this.count; i < l; i ++ ) {
+
+			_vector$6.fromBufferAttribute( this, i );
+
+			_vector$6.applyNormalMatrix( m );
+
+			this.setXYZ( i, _vector$6.x, _vector$6.y, _vector$6.z );
+
+		}
+
+		return this;
+
+	}
+
+	transformDirection( m ) {
+
+		for ( let i = 0, l = this.count; i < l; i ++ ) {
+
+			_vector$6.fromBufferAttribute( this, i );
+
+			_vector$6.transformDirection( m );
+
+			this.setXYZ( i, _vector$6.x, _vector$6.y, _vector$6.z );
+
+		}
+
+		return this;
+
+	}
+
+	getComponent( index, component ) {
+
+		let value = this.array[ index * this.data.stride + this.offset + component ];
+
+		if ( this.normalized ) value = denormalize( value, this.array );
+
+		return value;
+
+	}
+
+	setComponent( index, component, value ) {
+
+		if ( this.normalized ) value = normalize( value, this.array );
+
+		this.data.array[ index * this.data.stride + this.offset + component ] = value;
+
+		return this;
+
+	}
+
+	setX( index, x ) {
+
+		if ( this.normalized ) x = normalize( x, this.array );
+
+		this.data.array[ index * this.data.stride + this.offset ] = x;
+
+		return this;
+
+	}
+
+	setY( index, y ) {
+
+		if ( this.normalized ) y = normalize( y, this.array );
+
+		this.data.array[ index * this.data.stride + this.offset + 1 ] = y;
+
+		return this;
+
+	}
+
+	setZ( index, z ) {
+
+		if ( this.normalized ) z = normalize( z, this.array );
+
+		this.data.array[ index * this.data.stride + this.offset + 2 ] = z;
+
+		return this;
+
+	}
+
+	setW( index, w ) {
+
+		if ( this.normalized ) w = normalize( w, this.array );
+
+		this.data.array[ index * this.data.stride + this.offset + 3 ] = w;
+
+		return this;
+
+	}
+
+	getX( index ) {
+
+		let x = this.data.array[ index * this.data.stride + this.offset ];
+
+		if ( this.normalized ) x = denormalize( x, this.array );
+
+		return x;
+
+	}
+
+	getY( index ) {
+
+		let y = this.data.array[ index * this.data.stride + this.offset + 1 ];
+
+		if ( this.normalized ) y = denormalize( y, this.array );
+
+		return y;
+
+	}
+
+	getZ( index ) {
+
+		let z = this.data.array[ index * this.data.stride + this.offset + 2 ];
+
+		if ( this.normalized ) z = denormalize( z, this.array );
+
+		return z;
+
+	}
+
+	getW( index ) {
+
+		let w = this.data.array[ index * this.data.stride + this.offset + 3 ];
+
+		if ( this.normalized ) w = denormalize( w, this.array );
+
+		return w;
+
+	}
+
+	setXY( index, x, y ) {
+
+		index = index * this.data.stride + this.offset;
+
+		if ( this.normalized ) {
+
+			x = normalize( x, this.array );
+			y = normalize( y, this.array );
+
+		}
+
+		this.data.array[ index + 0 ] = x;
+		this.data.array[ index + 1 ] = y;
+
+		return this;
+
+	}
+
+	setXYZ( index, x, y, z ) {
+
+		index = index * this.data.stride + this.offset;
+
+		if ( this.normalized ) {
+
+			x = normalize( x, this.array );
+			y = normalize( y, this.array );
+			z = normalize( z, this.array );
+
+		}
+
+		this.data.array[ index + 0 ] = x;
+		this.data.array[ index + 1 ] = y;
+		this.data.array[ index + 2 ] = z;
+
+		return this;
+
+	}
+
+	setXYZW( index, x, y, z, w ) {
+
+		index = index * this.data.stride + this.offset;
+
+		if ( this.normalized ) {
+
+			x = normalize( x, this.array );
+			y = normalize( y, this.array );
+			z = normalize( z, this.array );
+			w = normalize( w, this.array );
+
+		}
+
+		this.data.array[ index + 0 ] = x;
+		this.data.array[ index + 1 ] = y;
+		this.data.array[ index + 2 ] = z;
+		this.data.array[ index + 3 ] = w;
+
+		return this;
+
+	}
+
+	clone( data ) {
+
+		if ( data === undefined ) {
+
+			console.log( 'THREE.InterleavedBufferAttribute.clone(): Cloning an interleaved buffer attribute will de-interleave buffer data.' );
+
+			const array = [];
+
+			for ( let i = 0; i < this.count; i ++ ) {
+
+				const index = i * this.data.stride + this.offset;
+
+				for ( let j = 0; j < this.itemSize; j ++ ) {
+
+					array.push( this.data.array[ index + j ] );
+
+				}
+
+			}
+
+			return new BufferAttribute( new this.array.constructor( array ), this.itemSize, this.normalized );
+
+		} else {
+
+			if ( data.interleavedBuffers === undefined ) {
+
+				data.interleavedBuffers = {};
+
+			}
+
+			if ( data.interleavedBuffers[ this.data.uuid ] === undefined ) {
+
+				data.interleavedBuffers[ this.data.uuid ] = this.data.clone( data );
+
+			}
+
+			return new InterleavedBufferAttribute( data.interleavedBuffers[ this.data.uuid ], this.itemSize, this.offset, this.normalized );
+
+		}
+
+	}
+
+	toJSON( data ) {
+
+		if ( data === undefined ) {
+
+			console.log( 'THREE.InterleavedBufferAttribute.toJSON(): Serializing an interleaved buffer attribute will de-interleave buffer data.' );
+
+			const array = [];
+
+			for ( let i = 0; i < this.count; i ++ ) {
+
+				const index = i * this.data.stride + this.offset;
+
+				for ( let j = 0; j < this.itemSize; j ++ ) {
+
+					array.push( this.data.array[ index + j ] );
+
+				}
+
+			}
+
+			// de-interleave data and save it as an ordinary buffer attribute for now
+
+			return {
+				itemSize: this.itemSize,
+				type: this.array.constructor.name,
+				array: array,
+				normalized: this.normalized
+			};
+
+		} else {
+
+			// save as true interleaved attribute
+
+			if ( data.interleavedBuffers === undefined ) {
+
+				data.interleavedBuffers = {};
+
+			}
+
+			if ( data.interleavedBuffers[ this.data.uuid ] === undefined ) {
+
+				data.interleavedBuffers[ this.data.uuid ] = this.data.toJSON( data );
+
+			}
+
+			return {
+				isInterleavedBufferAttribute: true,
+				itemSize: this.itemSize,
+				data: this.data.uuid,
+				offset: this.offset,
+				normalized: this.normalized
+			};
+
+		}
+
+	}
+
+}
+
+class SpriteMaterial extends Material {
+
+	constructor( parameters ) {
+
+		super();
+
+		this.isSpriteMaterial = true;
+
+		this.type = 'SpriteMaterial';
+
+		this.color = new Color( 0xffffff );
+
+		this.map = null;
+
+		this.alphaMap = null;
+
+		this.rotation = 0;
+
+		this.sizeAttenuation = true;
+
+		this.transparent = true;
+
+		this.fog = true;
+
+		this.setValues( parameters );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.color.copy( source.color );
+
+		this.map = source.map;
+
+		this.alphaMap = source.alphaMap;
+
+		this.rotation = source.rotation;
+
+		this.sizeAttenuation = source.sizeAttenuation;
+
+		this.fog = source.fog;
+
+		return this;
+
+	}
+
+}
+
+let _geometry;
+
+const _intersectPoint = /*@__PURE__*/ new Vector3();
+const _worldScale = /*@__PURE__*/ new Vector3();
+const _mvPosition = /*@__PURE__*/ new Vector3();
+
+const _alignedPosition = /*@__PURE__*/ new Vector2();
+const _rotatedPosition = /*@__PURE__*/ new Vector2();
+const _viewWorldMatrix = /*@__PURE__*/ new Matrix4();
+
+const _vA = /*@__PURE__*/ new Vector3();
+const _vB = /*@__PURE__*/ new Vector3();
+const _vC = /*@__PURE__*/ new Vector3();
+
+const _uvA = /*@__PURE__*/ new Vector2();
+const _uvB = /*@__PURE__*/ new Vector2();
+const _uvC = /*@__PURE__*/ new Vector2();
+
+class Sprite extends Object3D {
+
+	constructor( material = new SpriteMaterial() ) {
+
+		super();
+
+		this.isSprite = true;
+
+		this.type = 'Sprite';
+
+		if ( _geometry === undefined ) {
+
+			_geometry = new BufferGeometry();
+
+			const float32Array = new Float32Array( [
+				- 0.5, - 0.5, 0, 0, 0,
+				0.5, - 0.5, 0, 1, 0,
+				0.5, 0.5, 0, 1, 1,
+				- 0.5, 0.5, 0, 0, 1
+			] );
+
+			const interleavedBuffer = new InterleavedBuffer( float32Array, 5 );
+
+			_geometry.setIndex( [ 0, 1, 2,	0, 2, 3 ] );
+			_geometry.setAttribute( 'position', new InterleavedBufferAttribute( interleavedBuffer, 3, 0, false ) );
+			_geometry.setAttribute( 'uv', new InterleavedBufferAttribute( interleavedBuffer, 2, 3, false ) );
+
+		}
+
+		this.geometry = _geometry;
+		this.material = material;
+
+		this.center = new Vector2( 0.5, 0.5 );
+
+	}
+
+	raycast( raycaster, intersects ) {
+
+		if ( raycaster.camera === null ) {
+
+			console.error( 'THREE.Sprite: "Raycaster.camera" needs to be set in order to raycast against sprites.' );
+
+		}
+
+		_worldScale.setFromMatrixScale( this.matrixWorld );
+
+		_viewWorldMatrix.copy( raycaster.camera.matrixWorld );
+		this.modelViewMatrix.multiplyMatrices( raycaster.camera.matrixWorldInverse, this.matrixWorld );
+
+		_mvPosition.setFromMatrixPosition( this.modelViewMatrix );
+
+		if ( raycaster.camera.isPerspectiveCamera && this.material.sizeAttenuation === false ) {
+
+			_worldScale.multiplyScalar( - _mvPosition.z );
+
+		}
+
+		const rotation = this.material.rotation;
+		let sin, cos;
+
+		if ( rotation !== 0 ) {
+
+			cos = Math.cos( rotation );
+			sin = Math.sin( rotation );
+
+		}
+
+		const center = this.center;
+
+		transformVertex( _vA.set( - 0.5, - 0.5, 0 ), _mvPosition, center, _worldScale, sin, cos );
+		transformVertex( _vB.set( 0.5, - 0.5, 0 ), _mvPosition, center, _worldScale, sin, cos );
+		transformVertex( _vC.set( 0.5, 0.5, 0 ), _mvPosition, center, _worldScale, sin, cos );
+
+		_uvA.set( 0, 0 );
+		_uvB.set( 1, 0 );
+		_uvC.set( 1, 1 );
+
+		// check first triangle
+		let intersect = raycaster.ray.intersectTriangle( _vA, _vB, _vC, false, _intersectPoint );
+
+		if ( intersect === null ) {
+
+			// check second triangle
+			transformVertex( _vB.set( - 0.5, 0.5, 0 ), _mvPosition, center, _worldScale, sin, cos );
+			_uvB.set( 0, 1 );
+
+			intersect = raycaster.ray.intersectTriangle( _vA, _vC, _vB, false, _intersectPoint );
+			if ( intersect === null ) {
+
+				return;
+
+			}
+
+		}
+
+		const distance = raycaster.ray.origin.distanceTo( _intersectPoint );
+
+		if ( distance < raycaster.near || distance > raycaster.far ) return;
+
+		intersects.push( {
+
+			distance: distance,
+			point: _intersectPoint.clone(),
+			uv: Triangle.getInterpolation( _intersectPoint, _vA, _vB, _vC, _uvA, _uvB, _uvC, new Vector2() ),
+			face: null,
+			object: this
+
+		} );
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		if ( source.center !== undefined ) this.center.copy( source.center );
+
+		this.material = source.material;
+
+		return this;
+
+	}
+
+}
+
+function transformVertex( vertexPosition, mvPosition, center, scale, sin, cos ) {
+
+	// compute position in camera space
+	_alignedPosition.subVectors( vertexPosition, center ).addScalar( 0.5 ).multiply( scale );
+
+	// to check if rotation is not zero
+	if ( sin !== undefined ) {
+
+		_rotatedPosition.x = ( cos * _alignedPosition.x ) - ( sin * _alignedPosition.y );
+		_rotatedPosition.y = ( sin * _alignedPosition.x ) + ( cos * _alignedPosition.y );
+
+	} else {
+
+		_rotatedPosition.copy( _alignedPosition );
+
+	}
+
+
+	vertexPosition.copy( mvPosition );
+	vertexPosition.x += _rotatedPosition.x;
+	vertexPosition.y += _rotatedPosition.y;
+
+	// transform to world space
+	vertexPosition.applyMatrix4( _viewWorldMatrix );
+
+}
+
+const _v1$2 = /*@__PURE__*/ new Vector3();
+const _v2$1 = /*@__PURE__*/ new Vector3();
+
+class LOD extends Object3D {
+
+	constructor() {
+
+		super();
+
+		this._currentLevel = 0;
+
+		this.type = 'LOD';
+
+		Object.defineProperties( this, {
+			levels: {
+				enumerable: true,
+				value: []
+			},
+			isLOD: {
+				value: true,
+			}
+		} );
+
+		this.autoUpdate = true;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source, false );
+
+		const levels = source.levels;
+
+		for ( let i = 0, l = levels.length; i < l; i ++ ) {
+
+			const level = levels[ i ];
+
+			this.addLevel( level.object.clone(), level.distance, level.hysteresis );
+
+		}
+
+		this.autoUpdate = source.autoUpdate;
+
+		return this;
+
+	}
+
+	addLevel( object, distance = 0, hysteresis = 0 ) {
+
+		distance = Math.abs( distance );
+
+		const levels = this.levels;
+
+		let l;
+
+		for ( l = 0; l < levels.length; l ++ ) {
+
+			if ( distance < levels[ l ].distance ) {
+
+				break;
+
+			}
+
+		}
+
+		levels.splice( l, 0, { distance: distance, hysteresis: hysteresis, object: object } );
+
+		this.add( object );
+
+		return this;
+
+	}
+
+	removeLevel( distance ) {
+
+		const levels = this.levels;
+
+		for ( let i = 0; i < levels.length; i ++ ) {
+
+			if ( levels[ i ].distance === distance ) {
+
+				const removedElements = levels.splice( i, 1 );
+				this.remove( removedElements[ 0 ].object );
+
+				return true;
+
+			}
+
+		}
+
+		return false;
+
+	}
+
+	getCurrentLevel() {
+
+		return this._currentLevel;
+
+	}
+
+
+
+	getObjectForDistance( distance ) {
+
+		const levels = this.levels;
+
+		if ( levels.length > 0 ) {
+
+			let i, l;
+
+			for ( i = 1, l = levels.length; i < l; i ++ ) {
+
+				let levelDistance = levels[ i ].distance;
+
+				if ( levels[ i ].object.visible ) {
+
+					levelDistance -= levelDistance * levels[ i ].hysteresis;
+
+				}
+
+				if ( distance < levelDistance ) {
+
+					break;
+
+				}
+
+			}
+
+			return levels[ i - 1 ].object;
+
+		}
+
+		return null;
+
+	}
+
+	raycast( raycaster, intersects ) {
+
+		const levels = this.levels;
+
+		if ( levels.length > 0 ) {
+
+			_v1$2.setFromMatrixPosition( this.matrixWorld );
+
+			const distance = raycaster.ray.origin.distanceTo( _v1$2 );
+
+			this.getObjectForDistance( distance ).raycast( raycaster, intersects );
+
+		}
+
+	}
+
+	update( camera ) {
+
+		const levels = this.levels;
+
+		if ( levels.length > 1 ) {
+
+			_v1$2.setFromMatrixPosition( camera.matrixWorld );
+			_v2$1.setFromMatrixPosition( this.matrixWorld );
+
+			const distance = _v1$2.distanceTo( _v2$1 ) / camera.zoom;
+
+			levels[ 0 ].object.visible = true;
+
+			let i, l;
+
+			for ( i = 1, l = levels.length; i < l; i ++ ) {
+
+				let levelDistance = levels[ i ].distance;
+
+				if ( levels[ i ].object.visible ) {
+
+					levelDistance -= levelDistance * levels[ i ].hysteresis;
+
+				}
+
+				if ( distance >= levelDistance ) {
+
+					levels[ i - 1 ].object.visible = false;
+					levels[ i ].object.visible = true;
+
+				} else {
+
+					break;
+
+				}
+
+			}
+
+			this._currentLevel = i - 1;
+
+			for ( ; i < l; i ++ ) {
+
+				levels[ i ].object.visible = false;
+
+			}
+
+		}
+
+	}
+
+	toJSON( meta ) {
+
+		const data = super.toJSON( meta );
+
+		if ( this.autoUpdate === false ) data.object.autoUpdate = false;
+
+		data.object.levels = [];
+
+		const levels = this.levels;
+
+		for ( let i = 0, l = levels.length; i < l; i ++ ) {
+
+			const level = levels[ i ];
+
+			data.object.levels.push( {
+				object: level.object.uuid,
+				distance: level.distance,
+				hysteresis: level.hysteresis
+			} );
+
+		}
+
+		return data;
+
+	}
+
+}
+
+const _basePosition = /*@__PURE__*/ new Vector3();
+
+const _skinIndex = /*@__PURE__*/ new Vector4();
+const _skinWeight = /*@__PURE__*/ new Vector4();
+
+const _vector3 = /*@__PURE__*/ new Vector3();
+const _matrix4 = /*@__PURE__*/ new Matrix4();
+const _vertex = /*@__PURE__*/ new Vector3();
+
+const _sphere$4 = /*@__PURE__*/ new Sphere();
+const _inverseMatrix$2 = /*@__PURE__*/ new Matrix4();
+const _ray$2 = /*@__PURE__*/ new Ray();
+
+class SkinnedMesh extends Mesh {
+
+	constructor( geometry, material ) {
+
+		super( geometry, material );
+
+		this.isSkinnedMesh = true;
+
+		this.type = 'SkinnedMesh';
+
+		this.bindMode = AttachedBindMode;
+		this.bindMatrix = new Matrix4();
+		this.bindMatrixInverse = new Matrix4();
+
+		this.boundingBox = null;
+		this.boundingSphere = null;
+
+	}
+
+	computeBoundingBox() {
+
+		const geometry = this.geometry;
+
+		if ( this.boundingBox === null ) {
+
+			this.boundingBox = new Box3();
+
+		}
+
+		this.boundingBox.makeEmpty();
+
+		const positionAttribute = geometry.getAttribute( 'position' );
+
+		for ( let i = 0; i < positionAttribute.count; i ++ ) {
+
+			this.getVertexPosition( i, _vertex );
+			this.boundingBox.expandByPoint( _vertex );
+
+		}
+
+	}
+
+	computeBoundingSphere() {
+
+		const geometry = this.geometry;
+
+		if ( this.boundingSphere === null ) {
+
+			this.boundingSphere = new Sphere();
+
+		}
+
+		this.boundingSphere.makeEmpty();
+
+		const positionAttribute = geometry.getAttribute( 'position' );
+
+		for ( let i = 0; i < positionAttribute.count; i ++ ) {
+
+			this.getVertexPosition( i, _vertex );
+			this.boundingSphere.expandByPoint( _vertex );
+
+		}
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.bindMode = source.bindMode;
+		this.bindMatrix.copy( source.bindMatrix );
+		this.bindMatrixInverse.copy( source.bindMatrixInverse );
+
+		this.skeleton = source.skeleton;
+
+		if ( source.boundingBox !== null ) this.boundingBox = source.boundingBox.clone();
+		if ( source.boundingSphere !== null ) this.boundingSphere = source.boundingSphere.clone();
+
+		return this;
+
+	}
+
+	raycast( raycaster, intersects ) {
+
+		const material = this.material;
+		const matrixWorld = this.matrixWorld;
+
+		if ( material === undefined ) return;
+
+		// test with bounding sphere in world space
+
+		if ( this.boundingSphere === null ) this.computeBoundingSphere();
+
+		_sphere$4.copy( this.boundingSphere );
+		_sphere$4.applyMatrix4( matrixWorld );
+
+		if ( raycaster.ray.intersectsSphere( _sphere$4 ) === false ) return;
+
+		// convert ray to local space of skinned mesh
+
+		_inverseMatrix$2.copy( matrixWorld ).invert();
+		_ray$2.copy( raycaster.ray ).applyMatrix4( _inverseMatrix$2 );
+
+		// test with bounding box in local space
+
+		if ( this.boundingBox !== null ) {
+
+			if ( _ray$2.intersectsBox( this.boundingBox ) === false ) return;
+
+		}
+
+		// test for intersections with geometry
+
+		this._computeIntersections( raycaster, intersects, _ray$2 );
+
+	}
+
+	getVertexPosition( index, target ) {
+
+		super.getVertexPosition( index, target );
+
+		this.applyBoneTransform( index, target );
+
+		return target;
+
+	}
+
+	bind( skeleton, bindMatrix ) {
+
+		this.skeleton = skeleton;
+
+		if ( bindMatrix === undefined ) {
+
+			this.updateMatrixWorld( true );
+
+			this.skeleton.calculateInverses();
+
+			bindMatrix = this.matrixWorld;
+
+		}
+
+		this.bindMatrix.copy( bindMatrix );
+		this.bindMatrixInverse.copy( bindMatrix ).invert();
+
+	}
+
+	pose() {
+
+		this.skeleton.pose();
+
+	}
+
+	normalizeSkinWeights() {
+
+		const vector = new Vector4();
+
+		const skinWeight = this.geometry.attributes.skinWeight;
+
+		for ( let i = 0, l = skinWeight.count; i < l; i ++ ) {
+
+			vector.fromBufferAttribute( skinWeight, i );
+
+			const scale = 1.0 / vector.manhattanLength();
+
+			if ( scale !== Infinity ) {
+
+				vector.multiplyScalar( scale );
+
+			} else {
+
+				vector.set( 1, 0, 0, 0 ); // do something reasonable
+
+			}
+
+			skinWeight.setXYZW( i, vector.x, vector.y, vector.z, vector.w );
+
+		}
+
+	}
+
+	updateMatrixWorld( force ) {
+
+		super.updateMatrixWorld( force );
+
+		if ( this.bindMode === AttachedBindMode ) {
+
+			this.bindMatrixInverse.copy( this.matrixWorld ).invert();
+
+		} else if ( this.bindMode === DetachedBindMode ) {
+
+			this.bindMatrixInverse.copy( this.bindMatrix ).invert();
+
+		} else {
+
+			console.warn( 'THREE.SkinnedMesh: Unrecognized bindMode: ' + this.bindMode );
+
+		}
+
+	}
+
+	applyBoneTransform( index, vector ) {
+
+		const skeleton = this.skeleton;
+		const geometry = this.geometry;
+
+		_skinIndex.fromBufferAttribute( geometry.attributes.skinIndex, index );
+		_skinWeight.fromBufferAttribute( geometry.attributes.skinWeight, index );
+
+		_basePosition.copy( vector ).applyMatrix4( this.bindMatrix );
+
+		vector.set( 0, 0, 0 );
+
+		for ( let i = 0; i < 4; i ++ ) {
+
+			const weight = _skinWeight.getComponent( i );
+
+			if ( weight !== 0 ) {
+
+				const boneIndex = _skinIndex.getComponent( i );
+
+				_matrix4.multiplyMatrices( skeleton.bones[ boneIndex ].matrixWorld, skeleton.boneInverses[ boneIndex ] );
+
+				vector.addScaledVector( _vector3.copy( _basePosition ).applyMatrix4( _matrix4 ), weight );
+
+			}
+
+		}
+
+		return vector.applyMatrix4( this.bindMatrixInverse );
+
+	}
+
+}
+
+class Bone extends Object3D {
+
+	constructor() {
+
+		super();
+
+		this.isBone = true;
+
+		this.type = 'Bone';
+
+	}
+
+}
+
+class DataTexture extends Texture {
+
+	constructor( data = null, width = 1, height = 1, format, type, mapping, wrapS, wrapT, magFilter = NearestFilter, minFilter = NearestFilter, anisotropy, colorSpace ) {
+
+		super( null, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy, colorSpace );
+
+		this.isDataTexture = true;
+
+		this.image = { data: data, width: width, height: height };
+
+		this.generateMipmaps = false;
+		this.flipY = false;
+		this.unpackAlignment = 1;
+
+	}
+
+}
+
+const _offsetMatrix = /*@__PURE__*/ new Matrix4();
+const _identityMatrix$1 = /*@__PURE__*/ new Matrix4();
+
+class Skeleton {
+
+	constructor( bones = [], boneInverses = [] ) {
+
+		this.uuid = generateUUID();
+
+		this.bones = bones.slice( 0 );
+		this.boneInverses = boneInverses;
+		this.boneMatrices = null;
+
+		this.boneTexture = null;
+
+		this.init();
+
+	}
+
+	init() {
+
+		const bones = this.bones;
+		const boneInverses = this.boneInverses;
+
+		this.boneMatrices = new Float32Array( bones.length * 16 );
+
+		// calculate inverse bone matrices if necessary
+
+		if ( boneInverses.length === 0 ) {
+
+			this.calculateInverses();
+
+		} else {
+
+			// handle special case
+
+			if ( bones.length !== boneInverses.length ) {
+
+				console.warn( 'THREE.Skeleton: Number of inverse bone matrices does not match amount of bones.' );
+
+				this.boneInverses = [];
+
+				for ( let i = 0, il = this.bones.length; i < il; i ++ ) {
+
+					this.boneInverses.push( new Matrix4() );
+
+				}
+
+			}
+
+		}
+
+	}
+
+	calculateInverses() {
+
+		this.boneInverses.length = 0;
+
+		for ( let i = 0, il = this.bones.length; i < il; i ++ ) {
+
+			const inverse = new Matrix4();
+
+			if ( this.bones[ i ] ) {
+
+				inverse.copy( this.bones[ i ].matrixWorld ).invert();
+
+			}
+
+			this.boneInverses.push( inverse );
+
+		}
+
+	}
+
+	pose() {
+
+		// recover the bind-time world matrices
+
+		for ( let i = 0, il = this.bones.length; i < il; i ++ ) {
+
+			const bone = this.bones[ i ];
+
+			if ( bone ) {
+
+				bone.matrixWorld.copy( this.boneInverses[ i ] ).invert();
+
+			}
+
+		}
+
+		// compute the local matrices, positions, rotations and scales
+
+		for ( let i = 0, il = this.bones.length; i < il; i ++ ) {
+
+			const bone = this.bones[ i ];
+
+			if ( bone ) {
+
+				if ( bone.parent && bone.parent.isBone ) {
+
+					bone.matrix.copy( bone.parent.matrixWorld ).invert();
+					bone.matrix.multiply( bone.matrixWorld );
+
+				} else {
+
+					bone.matrix.copy( bone.matrixWorld );
+
+				}
+
+				bone.matrix.decompose( bone.position, bone.quaternion, bone.scale );
+
+			}
+
+		}
+
+	}
+
+	update() {
+
+		const bones = this.bones;
+		const boneInverses = this.boneInverses;
+		const boneMatrices = this.boneMatrices;
+		const boneTexture = this.boneTexture;
+
+		// flatten bone matrices to array
+
+		for ( let i = 0, il = bones.length; i < il; i ++ ) {
+
+			// compute the offset between the current and the original transform
+
+			const matrix = bones[ i ] ? bones[ i ].matrixWorld : _identityMatrix$1;
+
+			_offsetMatrix.multiplyMatrices( matrix, boneInverses[ i ] );
+			_offsetMatrix.toArray( boneMatrices, i * 16 );
+
+		}
+
+		if ( boneTexture !== null ) {
+
+			boneTexture.needsUpdate = true;
+
+		}
+
+	}
+
+	clone() {
+
+		return new Skeleton( this.bones, this.boneInverses );
+
+	}
+
+	computeBoneTexture() {
+
+		// layout (1 matrix = 4 pixels)
+		//      RGBA RGBA RGBA RGBA (=> column1, column2, column3, column4)
+		//  with  8x8  pixel texture max   16 bones * 4 pixels =  (8 * 8)
+		//       16x16 pixel texture max   64 bones * 4 pixels = (16 * 16)
+		//       32x32 pixel texture max  256 bones * 4 pixels = (32 * 32)
+		//       64x64 pixel texture max 1024 bones * 4 pixels = (64 * 64)
+
+		let size = Math.sqrt( this.bones.length * 4 ); // 4 pixels needed for 1 matrix
+		size = Math.ceil( size / 4 ) * 4;
+		size = Math.max( size, 4 );
+
+		const boneMatrices = new Float32Array( size * size * 4 ); // 4 floats per RGBA pixel
+		boneMatrices.set( this.boneMatrices ); // copy current values
+
+		const boneTexture = new DataTexture( boneMatrices, size, size, RGBAFormat, FloatType );
+		boneTexture.needsUpdate = true;
+
+		this.boneMatrices = boneMatrices;
+		this.boneTexture = boneTexture;
+
+		return this;
+
+	}
+
+	getBoneByName( name ) {
+
+		for ( let i = 0, il = this.bones.length; i < il; i ++ ) {
+
+			const bone = this.bones[ i ];
+
+			if ( bone.name === name ) {
+
+				return bone;
+
+			}
+
+		}
+
+		return undefined;
+
+	}
+
+	dispose( ) {
+
+		if ( this.boneTexture !== null ) {
+
+			this.boneTexture.dispose();
+
+			this.boneTexture = null;
+
+		}
+
+	}
+
+	fromJSON( json, bones ) {
+
+		this.uuid = json.uuid;
+
+		for ( let i = 0, l = json.bones.length; i < l; i ++ ) {
+
+			const uuid = json.bones[ i ];
+			let bone = bones[ uuid ];
+
+			if ( bone === undefined ) {
+
+				console.warn( 'THREE.Skeleton: No bone found with UUID:', uuid );
+				bone = new Bone();
+
+			}
+
+			this.bones.push( bone );
+			this.boneInverses.push( new Matrix4().fromArray( json.boneInverses[ i ] ) );
+
+		}
+
+		this.init();
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = {
+			metadata: {
+				version: 4.6,
+				type: 'Skeleton',
+				generator: 'Skeleton.toJSON'
+			},
+			bones: [],
+			boneInverses: []
+		};
+
+		data.uuid = this.uuid;
+
+		const bones = this.bones;
+		const boneInverses = this.boneInverses;
+
+		for ( let i = 0, l = bones.length; i < l; i ++ ) {
+
+			const bone = bones[ i ];
+			data.bones.push( bone.uuid );
+
+			const boneInverse = boneInverses[ i ];
+			data.boneInverses.push( boneInverse.toArray() );
+
+		}
+
+		return data;
+
+	}
+
+}
+
+class InstancedBufferAttribute extends BufferAttribute {
+
+	constructor( array, itemSize, normalized, meshPerAttribute = 1 ) {
+
+		super( array, itemSize, normalized );
+
+		this.isInstancedBufferAttribute = true;
+
+		this.meshPerAttribute = meshPerAttribute;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.meshPerAttribute = source.meshPerAttribute;
+
+		return this;
+
+	}
+
+	toJSON() {
+
+		const data = super.toJSON();
+
+		data.meshPerAttribute = this.meshPerAttribute;
+
+		data.isInstancedBufferAttribute = true;
+
+		return data;
+
+	}
+
+}
+
+const _instanceLocalMatrix = /*@__PURE__*/ new Matrix4();
+const _instanceWorldMatrix = /*@__PURE__*/ new Matrix4();
+
+const _instanceIntersects = [];
+
+const _box3 = /*@__PURE__*/ new Box3();
+const _identity = /*@__PURE__*/ new Matrix4();
+const _mesh$1 = /*@__PURE__*/ new Mesh();
+const _sphere$3 = /*@__PURE__*/ new Sphere();
+
+class InstancedMesh extends Mesh {
+
+	constructor( geometry, material, count ) {
+
+		super( geometry, material );
+
+		this.isInstancedMesh = true;
+
+		this.instanceMatrix = new InstancedBufferAttribute( new Float32Array( count * 16 ), 16 );
+		this.instanceColor = null;
+		this.morphTexture = null;
+
+		this.count = count;
+
+		this.boundingBox = null;
+		this.boundingSphere = null;
+
+		for ( let i = 0; i < count; i ++ ) {
+
+			this.setMatrixAt( i, _identity );
+
+		}
+
+	}
+
+	computeBoundingBox() {
+
+		const geometry = this.geometry;
+		const count = this.count;
+
+		if ( this.boundingBox === null ) {
+
+			this.boundingBox = new Box3();
+
+		}
+
+		if ( geometry.boundingBox === null ) {
+
+			geometry.computeBoundingBox();
+
+		}
+
+		this.boundingBox.makeEmpty();
+
+		for ( let i = 0; i < count; i ++ ) {
+
+			this.getMatrixAt( i, _instanceLocalMatrix );
+
+			_box3.copy( geometry.boundingBox ).applyMatrix4( _instanceLocalMatrix );
+
+			this.boundingBox.union( _box3 );
+
+		}
+
+	}
+
+	computeBoundingSphere() {
+
+		const geometry = this.geometry;
+		const count = this.count;
+
+		if ( this.boundingSphere === null ) {
+
+			this.boundingSphere = new Sphere();
+
+		}
+
+		if ( geometry.boundingSphere === null ) {
+
+			geometry.computeBoundingSphere();
+
+		}
+
+		this.boundingSphere.makeEmpty();
+
+		for ( let i = 0; i < count; i ++ ) {
+
+			this.getMatrixAt( i, _instanceLocalMatrix );
+
+			_sphere$3.copy( geometry.boundingSphere ).applyMatrix4( _instanceLocalMatrix );
+
+			this.boundingSphere.union( _sphere$3 );
+
+		}
+
+	}
+
+	copy( source, recursive ) {
+
+		super.copy( source, recursive );
+
+		this.instanceMatrix.copy( source.instanceMatrix );
+
+		if ( source.morphTexture !== null ) this.morphTexture = source.morphTexture.clone();
+		if ( source.instanceColor !== null ) this.instanceColor = source.instanceColor.clone();
+
+		this.count = source.count;
+
+		if ( source.boundingBox !== null ) this.boundingBox = source.boundingBox.clone();
+		if ( source.boundingSphere !== null ) this.boundingSphere = source.boundingSphere.clone();
+
+		return this;
+
+	}
+
+	getColorAt( index, color ) {
+
+		color.fromArray( this.instanceColor.array, index * 3 );
+
+	}
+
+	getMatrixAt( index, matrix ) {
+
+		matrix.fromArray( this.instanceMatrix.array, index * 16 );
+
+	}
+
+	getMorphAt( index, object ) {
+
+		const objectInfluences = object.morphTargetInfluences;
+
+		const array = this.morphTexture.source.data.data;
+
+		const len = objectInfluences.length + 1; // All influences + the baseInfluenceSum
+
+		const dataIndex = index * len + 1; // Skip the baseInfluenceSum at the beginning
+
+		for ( let i = 0; i < objectInfluences.length; i ++ ) {
+
+			objectInfluences[ i ] = array[ dataIndex + i ];
+
+		}
+
+	}
+
+	raycast( raycaster, intersects ) {
+
+		const matrixWorld = this.matrixWorld;
+		const raycastTimes = this.count;
+
+		_mesh$1.geometry = this.geometry;
+		_mesh$1.material = this.material;
+
+		if ( _mesh$1.material === undefined ) return;
+
+		// test with bounding sphere first
+
+		if ( this.boundingSphere === null ) this.computeBoundingSphere();
+
+		_sphere$3.copy( this.boundingSphere );
+		_sphere$3.applyMatrix4( matrixWorld );
+
+		if ( raycaster.ray.intersectsSphere( _sphere$3 ) === false ) return;
+
+		// now test each instance
+
+		for ( let instanceId = 0; instanceId < raycastTimes; instanceId ++ ) {
+
+			// calculate the world matrix for each instance
+
+			this.getMatrixAt( instanceId, _instanceLocalMatrix );
+
+			_instanceWorldMatrix.multiplyMatrices( matrixWorld, _instanceLocalMatrix );
+
+			// the mesh represents this single instance
+
+			_mesh$1.matrixWorld = _instanceWorldMatrix;
+
+			_mesh$1.raycast( raycaster, _instanceIntersects );
+
+			// process the result of raycast
+
+			for ( let i = 0, l = _instanceIntersects.length; i < l; i ++ ) {
+
+				const intersect = _instanceIntersects[ i ];
+				intersect.instanceId = instanceId;
+				intersect.object = this;
+				intersects.push( intersect );
+
+			}
+
+			_instanceIntersects.length = 0;
+
+		}
+
+	}
+
+	setColorAt( index, color ) {
+
+		if ( this.instanceColor === null ) {
+
+			this.instanceColor = new InstancedBufferAttribute( new Float32Array( this.instanceMatrix.count * 3 ).fill( 1 ), 3 );
+
+		}
+
+		color.toArray( this.instanceColor.array, index * 3 );
+
+	}
+
+	setMatrixAt( index, matrix ) {
+
+		matrix.toArray( this.instanceMatrix.array, index * 16 );
+
+	}
+
+	setMorphAt( index, object ) {
+
+		const objectInfluences = object.morphTargetInfluences;
+
+		const len = objectInfluences.length + 1; // morphBaseInfluence + all influences
+
+		if ( this.morphTexture === null ) {
+
+			this.morphTexture = new DataTexture( new Float32Array( len * this.count ), len, this.count, RedFormat, FloatType );
+
+		}
+
+		const array = this.morphTexture.source.data.data;
+
+		let morphInfluencesSum = 0;
+
+		for ( let i = 0; i < objectInfluences.length; i ++ ) {
+
+			morphInfluencesSum += objectInfluences[ i ];
+
+		}
+
+		const morphBaseInfluence = this.geometry.morphTargetsRelative ? 1 : 1 - morphInfluencesSum;
+
+		const dataIndex = len * index;
+
+		array[ dataIndex ] = morphBaseInfluence;
+
+		array.set( objectInfluences, dataIndex + 1 );
+
+	}
+
+	updateMorphTargets() {
+
+	}
+
+	dispose() {
+
+		this.dispatchEvent( { type: 'dispose' } );
+
+		if ( this.morphTexture !== null ) {
+
+			this.morphTexture.dispose();
+			this.morphTexture = null;
+
+		}
+
+		return this;
+
+	}
+
+}
+
+function sortOpaque( a, b ) {
+
+	return a.z - b.z;
+
+}
+
+function sortTransparent( a, b ) {
+
+	return b.z - a.z;
+
+}
+
+class MultiDrawRenderList {
+
+	constructor() {
+
+		this.index = 0;
+		this.pool = [];
+		this.list = [];
+
+	}
+
+	push( drawRange, z, index ) {
+
+		const pool = this.pool;
+		const list = this.list;
+		if ( this.index >= pool.length ) {
+
+			pool.push( {
+
+				start: - 1,
+				count: - 1,
+				z: - 1,
+				index: - 1,
+
+			} );
+
+		}
+
+		const item = pool[ this.index ];
+		list.push( item );
+		this.index ++;
+
+		item.start = drawRange.start;
+		item.count = drawRange.count;
+		item.z = z;
+		item.index = index;
+
+	}
+
+	reset() {
+
+		this.list.length = 0;
+		this.index = 0;
+
+	}
+
+}
+
+const _matrix$1 = /*@__PURE__*/ new Matrix4();
+const _invMatrixWorld = /*@__PURE__*/ new Matrix4();
+const _identityMatrix = /*@__PURE__*/ new Matrix4();
+const _whiteColor = /*@__PURE__*/ new Color( 1, 1, 1 );
+const _projScreenMatrix$2 = /*@__PURE__*/ new Matrix4();
+const _frustum = /*@__PURE__*/ new Frustum();
+const _box$1 = /*@__PURE__*/ new Box3();
+const _sphere$2 = /*@__PURE__*/ new Sphere();
+const _vector$5 = /*@__PURE__*/ new Vector3();
+const _forward = /*@__PURE__*/ new Vector3();
+const _temp = /*@__PURE__*/ new Vector3();
+const _renderList = /*@__PURE__*/ new MultiDrawRenderList();
+const _mesh = /*@__PURE__*/ new Mesh();
+const _batchIntersects = [];
+
+// @TODO: SkinnedMesh support?
+// @TODO: geometry.groups support?
+// @TODO: geometry.drawRange support?
+// @TODO: geometry.morphAttributes support?
+// @TODO: Support uniform parameter per geometry
+// @TODO: Add an "optimize" function to pack geometry and remove data gaps
+
+// copies data from attribute "src" into "target" starting at "targetOffset"
+function copyAttributeData( src, target, targetOffset = 0 ) {
+
+	const itemSize = target.itemSize;
+	if ( src.isInterleavedBufferAttribute || src.array.constructor !== target.array.constructor ) {
+
+		// use the component getters and setters if the array data cannot
+		// be copied directly
+		const vertexCount = src.count;
+		for ( let i = 0; i < vertexCount; i ++ ) {
+
+			for ( let c = 0; c < itemSize; c ++ ) {
+
+				target.setComponent( i + targetOffset, c, src.getComponent( i, c ) );
+
+			}
+
+		}
+
+	} else {
+
+		// faster copy approach using typed array set function
+		target.array.set( src.array, targetOffset * itemSize );
+
+	}
+
+	target.needsUpdate = true;
+
+}
+
+class BatchedMesh extends Mesh {
+
+	get maxInstanceCount() {
+
+		return this._maxInstanceCount;
+
+	}
+
+	constructor( maxInstanceCount, maxVertexCount, maxIndexCount = maxVertexCount * 2, material ) {
+
+		super( new BufferGeometry(), material );
+
+		this.isBatchedMesh = true;
+		this.perObjectFrustumCulled = true;
+		this.sortObjects = true;
+		this.boundingBox = null;
+		this.boundingSphere = null;
+		this.customSort = null;
+
+		// stores visible, active, and geometry id per object
+		this._drawInfo = [];
+
+		// instance ids that have been set as inactive, and are available to be overwritten
+		this._availableInstanceIds = [];
+
+		// geometry information
+		this._drawRanges = [];
+		this._reservedRanges = [];
+		this._bounds = [];
+
+		this._maxInstanceCount = maxInstanceCount;
+		this._maxVertexCount = maxVertexCount;
+		this._maxIndexCount = maxIndexCount;
+
+		this._geometryInitialized = false;
+		this._geometryCount = 0;
+		this._multiDrawCounts = new Int32Array( maxInstanceCount );
+		this._multiDrawStarts = new Int32Array( maxInstanceCount );
+		this._multiDrawCount = 0;
+		this._multiDrawInstances = null;
+		this._visibilityChanged = true;
+
+		// Local matrix per geometry by using data texture
+		this._matricesTexture = null;
+		this._indirectTexture = null;
+		this._colorsTexture = null;
+
+		this._initMatricesTexture();
+		this._initIndirectTexture();
+
+	}
+
+	_initMatricesTexture() {
+
+		// layout (1 matrix = 4 pixels)
+		//      RGBA RGBA RGBA RGBA (=> column1, column2, column3, column4)
+		//  with  8x8  pixel texture max   16 matrices * 4 pixels =  (8 * 8)
+		//       16x16 pixel texture max   64 matrices * 4 pixels = (16 * 16)
+		//       32x32 pixel texture max  256 matrices * 4 pixels = (32 * 32)
+		//       64x64 pixel texture max 1024 matrices * 4 pixels = (64 * 64)
+
+		let size = Math.sqrt( this._maxInstanceCount * 4 ); // 4 pixels needed for 1 matrix
+		size = Math.ceil( size / 4 ) * 4;
+		size = Math.max( size, 4 );
+
+		const matricesArray = new Float32Array( size * size * 4 ); // 4 floats per RGBA pixel
+		const matricesTexture = new DataTexture( matricesArray, size, size, RGBAFormat, FloatType );
+
+		this._matricesTexture = matricesTexture;
+
+	}
+
+	_initIndirectTexture() {
+
+		let size = Math.sqrt( this._maxInstanceCount );
+		size = Math.ceil( size );
+
+		const indirectArray = new Uint32Array( size * size );
+		const indirectTexture = new DataTexture( indirectArray, size, size, RedIntegerFormat, UnsignedIntType );
+
+		this._indirectTexture = indirectTexture;
+
+	}
+
+	_initColorsTexture() {
+
+		let size = Math.sqrt( this._maxInstanceCount );
+		size = Math.ceil( size );
+
+		// 4 floats per RGBA pixel initialized to white
+		const colorsArray = new Float32Array( size * size * 4 ).fill( 1 );
+		const colorsTexture = new DataTexture( colorsArray, size, size, RGBAFormat, FloatType );
+		colorsTexture.colorSpace = ColorManagement.workingColorSpace;
+
+		this._colorsTexture = colorsTexture;
+
+	}
+
+	_initializeGeometry( reference ) {
+
+		const geometry = this.geometry;
+		const maxVertexCount = this._maxVertexCount;
+		const maxIndexCount = this._maxIndexCount;
+		if ( this._geometryInitialized === false ) {
+
+			for ( const attributeName in reference.attributes ) {
+
+				const srcAttribute = reference.getAttribute( attributeName );
+				const { array, itemSize, normalized } = srcAttribute;
+
+				const dstArray = new array.constructor( maxVertexCount * itemSize );
+				const dstAttribute = new BufferAttribute( dstArray, itemSize, normalized );
+
+				geometry.setAttribute( attributeName, dstAttribute );
+
+			}
+
+			if ( reference.getIndex() !== null ) {
+
+				// Reserve last u16 index for primitive restart.
+				const indexArray = maxVertexCount > 65535
+					? new Uint32Array( maxIndexCount )
+					: new Uint16Array( maxIndexCount );
+
+				geometry.setIndex( new BufferAttribute( indexArray, 1 ) );
+
+			}
+
+			this._geometryInitialized = true;
+
+		}
+
+	}
+
+	// Make sure the geometry is compatible with the existing combined geometry attributes
+	_validateGeometry( geometry ) {
+
+		// check to ensure the geometries are using consistent attributes and indices
+		const batchGeometry = this.geometry;
+		if ( Boolean( geometry.getIndex() ) !== Boolean( batchGeometry.getIndex() ) ) {
+
+			throw new Error( 'BatchedMesh: All geometries must consistently have "index".' );
+
+		}
+
+		for ( const attributeName in batchGeometry.attributes ) {
+
+			if ( ! geometry.hasAttribute( attributeName ) ) {
+
+				throw new Error( `BatchedMesh: Added geometry missing "${ attributeName }". All geometries must have consistent attributes.` );
+
+			}
+
+			const srcAttribute = geometry.getAttribute( attributeName );
+			const dstAttribute = batchGeometry.getAttribute( attributeName );
+			if ( srcAttribute.itemSize !== dstAttribute.itemSize || srcAttribute.normalized !== dstAttribute.normalized ) {
+
+				throw new Error( 'BatchedMesh: All attributes must have a consistent itemSize and normalized value.' );
+
+			}
+
+		}
+
+	}
+
+	setCustomSort( func ) {
+
+		this.customSort = func;
+		return this;
+
+	}
+
+	computeBoundingBox() {
+
+		if ( this.boundingBox === null ) {
+
+			this.boundingBox = new Box3();
+
+		}
+
+		const boundingBox = this.boundingBox;
+		const drawInfo = this._drawInfo;
+
+		boundingBox.makeEmpty();
+		for ( let i = 0, l = drawInfo.length; i < l; i ++ ) {
+
+			if ( drawInfo[ i ].active === false ) continue;
+
+			const geometryId = drawInfo[ i ].geometryIndex;
+			this.getMatrixAt( i, _matrix$1 );
+			this.getBoundingBoxAt( geometryId, _box$1 ).applyMatrix4( _matrix$1 );
+			boundingBox.union( _box$1 );
+
+		}
+
+	}
+
+	computeBoundingSphere() {
+
+		if ( this.boundingSphere === null ) {
+
+			this.boundingSphere = new Sphere();
+
+		}
+
+		const boundingSphere = this.boundingSphere;
+		const drawInfo = this._drawInfo;
+
+		boundingSphere.makeEmpty();
+		for ( let i = 0, l = drawInfo.length; i < l; i ++ ) {
+
+			if ( drawInfo[ i ].active === false ) continue;
+
+			const geometryId = drawInfo[ i ].geometryIndex;
+			this.getMatrixAt( i, _matrix$1 );
+			this.getBoundingSphereAt( geometryId, _sphere$2 ).applyMatrix4( _matrix$1 );
+			boundingSphere.union( _sphere$2 );
+
+		}
+
+	}
+
+	addInstance( geometryId ) {
+
+		const atCapacity = this._drawInfo.length >= this.maxInstanceCount;
+
+		// ensure we're not over geometry
+		if ( atCapacity && this._availableInstanceIds.length === 0 ) {
+
+			throw new Error( 'BatchedMesh: Maximum item count reached.' );
+
+		}
+
+		const instanceDrawInfo = {
+			visible: true,
+			active: true,
+			geometryIndex: geometryId,
+		};
+
+		let drawId = null;
+
+		// Prioritize using previously freed instance ids
+		if ( this._availableInstanceIds.length > 0 ) {
+
+			drawId = this._availableInstanceIds.pop();
+			this._drawInfo[ drawId ] = instanceDrawInfo;
+
+		} else {
+
+			drawId = this._drawInfo.length;
+			this._drawInfo.push( instanceDrawInfo );
+
+		}
+
+		const matricesTexture = this._matricesTexture;
+		const matricesArray = matricesTexture.image.data;
+		_identityMatrix.toArray( matricesArray, drawId * 16 );
+		matricesTexture.needsUpdate = true;
+
+		const colorsTexture = this._colorsTexture;
+		if ( colorsTexture ) {
+
+			_whiteColor.toArray( colorsTexture.image.data, drawId * 4 );
+			colorsTexture.needsUpdate = true;
+
+		}
+
+		return drawId;
+
+	}
+
+	addGeometry( geometry, vertexCount = - 1, indexCount = - 1 ) {
+
+		this._initializeGeometry( geometry );
+
+		this._validateGeometry( geometry );
+
+		// ensure we're not over geometry
+		if ( this._drawInfo.length >= this._maxInstanceCount ) {
+
+			throw new Error( 'BatchedMesh: Maximum item count reached.' );
+
+		}
+
+		// get the necessary range fo the geometry
+		const reservedRange = {
+			vertexStart: - 1,
+			vertexCount: - 1,
+			indexStart: - 1,
+			indexCount: - 1,
+		};
+
+		let lastRange = null;
+		const reservedRanges = this._reservedRanges;
+		const drawRanges = this._drawRanges;
+		const bounds = this._bounds;
+		if ( this._geometryCount !== 0 ) {
+
+			lastRange = reservedRanges[ reservedRanges.length - 1 ];
+
+		}
+
+		if ( vertexCount === - 1 ) {
+
+			reservedRange.vertexCount = geometry.getAttribute( 'position' ).count;
+
+		} else {
+
+			reservedRange.vertexCount = vertexCount;
+
+		}
+
+		if ( lastRange === null ) {
+
+			reservedRange.vertexStart = 0;
+
+		} else {
+
+			reservedRange.vertexStart = lastRange.vertexStart + lastRange.vertexCount;
+
+		}
+
+		const index = geometry.getIndex();
+		const hasIndex = index !== null;
+		if ( hasIndex ) {
+
+			if ( indexCount	=== - 1 ) {
+
+				reservedRange.indexCount = index.count;
+
+			} else {
+
+				reservedRange.indexCount = indexCount;
+
+			}
+
+			if ( lastRange === null ) {
+
+				reservedRange.indexStart = 0;
+
+			} else {
+
+				reservedRange.indexStart = lastRange.indexStart + lastRange.indexCount;
+
+			}
+
+		}
+
+		if (
+			reservedRange.indexStart !== - 1 &&
+			reservedRange.indexStart + reservedRange.indexCount > this._maxIndexCount ||
+			reservedRange.vertexStart + reservedRange.vertexCount > this._maxVertexCount
+		) {
+
+			throw new Error( 'BatchedMesh: Reserved space request exceeds the maximum buffer size.' );
+
+		}
+
+		// update id
+		const geometryId = this._geometryCount;
+		this._geometryCount ++;
+
+		// add the reserved range and draw range objects
+		reservedRanges.push( reservedRange );
+		drawRanges.push( {
+			start: hasIndex ? reservedRange.indexStart : reservedRange.vertexStart,
+			count: - 1
+		} );
+		bounds.push( {
+			boxInitialized: false,
+			box: new Box3(),
+
+			sphereInitialized: false,
+			sphere: new Sphere()
+		} );
+
+		// update the geometry
+		this.setGeometryAt( geometryId, geometry );
+
+		return geometryId;
+
+	}
+
+	setGeometryAt( geometryId, geometry ) {
+
+		if ( geometryId >= this._geometryCount ) {
+
+			throw new Error( 'BatchedMesh: Maximum geometry count reached.' );
+
+		}
+
+		this._validateGeometry( geometry );
+
+		const batchGeometry = this.geometry;
+		const hasIndex = batchGeometry.getIndex() !== null;
+		const dstIndex = batchGeometry.getIndex();
+		const srcIndex = geometry.getIndex();
+		const reservedRange = this._reservedRanges[ geometryId ];
+		if (
+			hasIndex &&
+			srcIndex.count > reservedRange.indexCount ||
+			geometry.attributes.position.count > reservedRange.vertexCount
+		) {
+
+			throw new Error( 'BatchedMesh: Reserved space not large enough for provided geometry.' );
+
+		}
+
+		// copy geometry over
+		const vertexStart = reservedRange.vertexStart;
+		const vertexCount = reservedRange.vertexCount;
+		for ( const attributeName in batchGeometry.attributes ) {
+
+			// copy attribute data
+			const srcAttribute = geometry.getAttribute( attributeName );
+			const dstAttribute = batchGeometry.getAttribute( attributeName );
+			copyAttributeData( srcAttribute, dstAttribute, vertexStart );
+
+			// fill the rest in with zeroes
+			const itemSize = srcAttribute.itemSize;
+			for ( let i = srcAttribute.count, l = vertexCount; i < l; i ++ ) {
+
+				const index = vertexStart + i;
+				for ( let c = 0; c < itemSize; c ++ ) {
+
+					dstAttribute.setComponent( index, c, 0 );
+
+				}
+
+			}
+
+			dstAttribute.needsUpdate = true;
+			dstAttribute.addUpdateRange( vertexStart * itemSize, vertexCount * itemSize );
+
+		}
+
+		// copy index
+		if ( hasIndex ) {
+
+			const indexStart = reservedRange.indexStart;
+
+			// copy index data over
+			for ( let i = 0; i < srcIndex.count; i ++ ) {
+
+				dstIndex.setX( indexStart + i, vertexStart + srcIndex.getX( i ) );
+
+			}
+
+			// fill the rest in with zeroes
+			for ( let i = srcIndex.count, l = reservedRange.indexCount; i < l; i ++ ) {
+
+				dstIndex.setX( indexStart + i, vertexStart );
+
+			}
+
+			dstIndex.needsUpdate = true;
+			dstIndex.addUpdateRange( indexStart, reservedRange.indexCount );
+
+		}
+
+		// store the bounding boxes
+		const bound = this._bounds[ geometryId ];
+		if ( geometry.boundingBox !== null ) {
+
+			bound.box.copy( geometry.boundingBox );
+			bound.boxInitialized = true;
+
+		} else {
+
+			bound.boxInitialized = false;
+
+		}
+
+		if ( geometry.boundingSphere !== null ) {
+
+			bound.sphere.copy( geometry.boundingSphere );
+			bound.sphereInitialized = true;
+
+		} else {
+
+			bound.sphereInitialized = false;
+
+		}
+
+		// set drawRange count
+		const drawRange = this._drawRanges[ geometryId ];
+		const posAttr = geometry.getAttribute( 'position' );
+		drawRange.count = hasIndex ? srcIndex.count : posAttr.count;
+		this._visibilityChanged = true;
+
+		return geometryId;
+
+	}
+
+	/*
+	deleteGeometry( geometryId ) {
+
+		// TODO: delete geometry and associated instances
+
+	}
+	*/
+
+	deleteInstance( instanceId ) {
+
+		const drawInfo = this._drawInfo;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {
+
+			return this;
+
+		}
+
+		drawInfo[ instanceId ].active = false;
+		this._availableInstanceIds.push( instanceId );
+		this._visibilityChanged = true;
+
+		return this;
+
+	}
+
+	// get bounding box and compute it if it doesn't exist
+	getBoundingBoxAt( geometryId, target ) {
+
+		if ( geometryId >= this._geometryCount ) {
+
+			return null;
+
+		}
+
+		// compute bounding box
+		const bound = this._bounds[ geometryId ];
+		const box = bound.box;
+		const geometry = this.geometry;
+		if ( bound.boxInitialized === false ) {
+
+			box.makeEmpty();
+
+			const index = geometry.index;
+			const position = geometry.attributes.position;
+			const drawRange = this._drawRanges[ geometryId ];
+			for ( let i = drawRange.start, l = drawRange.start + drawRange.count; i < l; i ++ ) {
+
+				let iv = i;
+				if ( index ) {
+
+					iv = index.getX( iv );
+
+				}
+
+				box.expandByPoint( _vector$5.fromBufferAttribute( position, iv ) );
+
+			}
+
+			bound.boxInitialized = true;
+
+		}
+
+		target.copy( box );
+		return target;
+
+	}
+
+	// get bounding sphere and compute it if it doesn't exist
+	getBoundingSphereAt( geometryId, target ) {
+
+		if ( geometryId >= this._geometryCount ) {
+
+			return null;
+
+		}
+
+		// compute bounding sphere
+		const bound = this._bounds[ geometryId ];
+		const sphere = bound.sphere;
+		const geometry = this.geometry;
+		if ( bound.sphereInitialized === false ) {
+
+			sphere.makeEmpty();
+
+			this.getBoundingBoxAt( geometryId, _box$1 );
+			_box$1.getCenter( sphere.center );
+
+			const index = geometry.index;
+			const position = geometry.attributes.position;
+			const drawRange = this._drawRanges[ geometryId ];
+
+			let maxRadiusSq = 0;
+			for ( let i = drawRange.start, l = drawRange.start + drawRange.count; i < l; i ++ ) {
+
+				let iv = i;
+				if ( index ) {
+
+					iv = index.getX( iv );
+
+				}
+
+				_vector$5.fromBufferAttribute( position, iv );
+				maxRadiusSq = Math.max( maxRadiusSq, sphere.center.distanceToSquared( _vector$5 ) );
+
+			}
+
+			sphere.radius = Math.sqrt( maxRadiusSq );
+			bound.sphereInitialized = true;
+
+		}
+
+		target.copy( sphere );
+		return target;
+
+	}
+
+	setMatrixAt( instanceId, matrix ) {
+
+		// @TODO: Map geometryId to index of the arrays because
+		//        optimize() can make geometryId mismatch the index
+
+		const drawInfo = this._drawInfo;
+		const matricesTexture = this._matricesTexture;
+		const matricesArray = this._matricesTexture.image.data;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {
+
+			return this;
+
+		}
+
+		matrix.toArray( matricesArray, instanceId * 16 );
+		matricesTexture.needsUpdate = true;
+
+		return this;
+
+	}
+
+	getMatrixAt( instanceId, matrix ) {
+
+		const drawInfo = this._drawInfo;
+		const matricesArray = this._matricesTexture.image.data;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {
+
+			return null;
+
+		}
+
+		return matrix.fromArray( matricesArray, instanceId * 16 );
+
+	}
+
+	setColorAt( instanceId, color ) {
+
+		if ( this._colorsTexture === null ) {
+
+			this._initColorsTexture();
+
+		}
+
+		// @TODO: Map id to index of the arrays because
+		//        optimize() can make id mismatch the index
+
+		const colorsTexture = this._colorsTexture;
+		const colorsArray = this._colorsTexture.image.data;
+		const drawInfo = this._drawInfo;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {
+
+			return this;
+
+		}
+
+		color.toArray( colorsArray, instanceId * 4 );
+		colorsTexture.needsUpdate = true;
+
+		return this;
+
+	}
+
+	getColorAt( instanceId, color ) {
+
+		const colorsArray = this._colorsTexture.image.data;
+		const drawInfo = this._drawInfo;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {
+
+			return null;
+
+		}
+
+		return color.fromArray( colorsArray, instanceId * 4 );
+
+	}
+
+	setVisibleAt( instanceId, value ) {
+
+		// if the geometry is out of range, not active, or visibility state
+		// does not change then return early
+		const drawInfo = this._drawInfo;
+		if (
+			instanceId >= drawInfo.length ||
+			drawInfo[ instanceId ].active === false ||
+			drawInfo[ instanceId ].visible === value
+		) {
+
+			return this;
+
+		}
+
+		drawInfo[ instanceId ].visible = value;
+		this._visibilityChanged = true;
+
+		return this;
+
+	}
+
+	getVisibleAt( instanceId ) {
+
+		// return early if the geometry is out of range or not active
+		const drawInfo = this._drawInfo;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {
+
+			return false;
+
+		}
+
+		return drawInfo[ instanceId ].visible;
+
+	}
+
+	setGeometryIdAt( instanceId, geometryId ) {
+
+		// return early if the geometry is out of range or not active
+		const drawInfo = this._drawInfo;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {
+
+			return null;
+
+		}
+
+		// check if the provided geometryId is within the valid range
+		if ( geometryId < 0 || geometryId >= this._geometryCount ) {
+
+			return null;
+
+		}
+
+		drawInfo[ instanceId ].geometryIndex = geometryId;
+
+		return this;
+
+	}
+
+	getGeometryIdAt( instanceId ) {
+
+		const drawInfo = this._drawInfo;
+		if ( instanceId >= drawInfo.length || drawInfo[ instanceId ].active === false ) {

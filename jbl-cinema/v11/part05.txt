@@ -1,0 +1,5000 @@
+			return [ gamutMapping, 'LinearTransferOETF' ];
+
+		case SRGBColorSpace:
+		case DisplayP3ColorSpace:
+			return [ gamutMapping, 'sRGBTransferOETF' ];
+
+		default:
+			console.warn( 'THREE.WebGLProgram: Unsupported color space:', colorSpace );
+			return [ gamutMapping, 'LinearTransferOETF' ];
+
+	}
+
+}
+
+function getShaderErrors( gl, shader, type ) {
+
+	const status = gl.getShaderParameter( shader, gl.COMPILE_STATUS );
+	const errors = gl.getShaderInfoLog( shader ).trim();
+
+	if ( status && errors === '' ) return '';
+
+	const errorMatches = /ERROR: 0:(\d+)/.exec( errors );
+	if ( errorMatches ) {
+
+		// --enable-privileged-webgl-extension
+		// console.log( '**' + type + '**', gl.getExtension( 'WEBGL_debug_shaders' ).getTranslatedShaderSource( shader ) );
+
+		const errorLine = parseInt( errorMatches[ 1 ] );
+		return type.toUpperCase() + '\n\n' + errors + '\n\n' + handleSource( gl.getShaderSource( shader ), errorLine );
+
+	} else {
+
+		return errors;
+
+	}
+
+}
+
+function getTexelEncodingFunction( functionName, colorSpace ) {
+
+	const components = getEncodingComponents( colorSpace );
+	return `vec4 ${functionName}( vec4 value ) { return ${components[ 0 ]}( ${components[ 1 ]}( value ) ); }`;
+
+}
+
+function getToneMappingFunction( functionName, toneMapping ) {
+
+	let toneMappingName;
+
+	switch ( toneMapping ) {
+
+		case LinearToneMapping:
+			toneMappingName = 'Linear';
+			break;
+
+		case ReinhardToneMapping:
+			toneMappingName = 'Reinhard';
+			break;
+
+		case CineonToneMapping:
+			toneMappingName = 'Cineon';
+			break;
+
+		case ACESFilmicToneMapping:
+			toneMappingName = 'ACESFilmic';
+			break;
+
+		case AgXToneMapping:
+			toneMappingName = 'AgX';
+			break;
+
+		case NeutralToneMapping:
+			toneMappingName = 'Neutral';
+			break;
+
+		case CustomToneMapping:
+			toneMappingName = 'Custom';
+			break;
+
+		default:
+			console.warn( 'THREE.WebGLProgram: Unsupported toneMapping:', toneMapping );
+			toneMappingName = 'Linear';
+
+	}
+
+	return 'vec3 ' + functionName + '( vec3 color ) { return ' + toneMappingName + 'ToneMapping( color ); }';
+
+}
+
+const _v0$1 = /*@__PURE__*/ new Vector3();
+
+function getLuminanceFunction() {
+
+	ColorManagement.getLuminanceCoefficients( _v0$1 );
+
+	const r = _v0$1.x.toFixed( 4 );
+	const g = _v0$1.y.toFixed( 4 );
+	const b = _v0$1.z.toFixed( 4 );
+
+	return [
+
+		'float luminance( const in vec3 rgb ) {',
+
+		`	const vec3 weights = vec3( ${ r }, ${ g }, ${ b } );`,
+
+		'	return dot( weights, rgb );',
+
+		'}'
+
+	].join( '\n' );
+
+}
+
+function generateVertexExtensions( parameters ) {
+
+	const chunks = [
+		parameters.extensionClipCullDistance ? '#extension GL_ANGLE_clip_cull_distance : require' : '',
+		parameters.extensionMultiDraw ? '#extension GL_ANGLE_multi_draw : require' : '',
+	];
+
+	return chunks.filter( filterEmptyLine ).join( '\n' );
+
+}
+
+function generateDefines( defines ) {
+
+	const chunks = [];
+
+	for ( const name in defines ) {
+
+		const value = defines[ name ];
+
+		if ( value === false ) continue;
+
+		chunks.push( '#define ' + name + ' ' + value );
+
+	}
+
+	return chunks.join( '\n' );
+
+}
+
+function fetchAttributeLocations( gl, program ) {
+
+	const attributes = {};
+
+	const n = gl.getProgramParameter( program, gl.ACTIVE_ATTRIBUTES );
+
+	for ( let i = 0; i < n; i ++ ) {
+
+		const info = gl.getActiveAttrib( program, i );
+		const name = info.name;
+
+		let locationSize = 1;
+		if ( info.type === gl.FLOAT_MAT2 ) locationSize = 2;
+		if ( info.type === gl.FLOAT_MAT3 ) locationSize = 3;
+		if ( info.type === gl.FLOAT_MAT4 ) locationSize = 4;
+
+		// console.log( 'THREE.WebGLProgram: ACTIVE VERTEX ATTRIBUTE:', name, i );
+
+		attributes[ name ] = {
+			type: info.type,
+			location: gl.getAttribLocation( program, name ),
+			locationSize: locationSize
+		};
+
+	}
+
+	return attributes;
+
+}
+
+function filterEmptyLine( string ) {
+
+	return string !== '';
+
+}
+
+function replaceLightNums( string, parameters ) {
+
+	const numSpotLightCoords = parameters.numSpotLightShadows + parameters.numSpotLightMaps - parameters.numSpotLightShadowsWithMaps;
+
+	return string
+		.replace( /NUM_DIR_LIGHTS/g, parameters.numDirLights )
+		.replace( /NUM_SPOT_LIGHTS/g, parameters.numSpotLights )
+		.replace( /NUM_SPOT_LIGHT_MAPS/g, parameters.numSpotLightMaps )
+		.replace( /NUM_SPOT_LIGHT_COORDS/g, numSpotLightCoords )
+		.replace( /NUM_RECT_AREA_LIGHTS/g, parameters.numRectAreaLights )
+		.replace( /NUM_POINT_LIGHTS/g, parameters.numPointLights )
+		.replace( /NUM_HEMI_LIGHTS/g, parameters.numHemiLights )
+		.replace( /NUM_DIR_LIGHT_SHADOWS/g, parameters.numDirLightShadows )
+		.replace( /NUM_SPOT_LIGHT_SHADOWS_WITH_MAPS/g, parameters.numSpotLightShadowsWithMaps )
+		.replace( /NUM_SPOT_LIGHT_SHADOWS/g, parameters.numSpotLightShadows )
+		.replace( /NUM_POINT_LIGHT_SHADOWS/g, parameters.numPointLightShadows );
+
+}
+
+function replaceClippingPlaneNums( string, parameters ) {
+
+	return string
+		.replace( /NUM_CLIPPING_PLANES/g, parameters.numClippingPlanes )
+		.replace( /UNION_CLIPPING_PLANES/g, ( parameters.numClippingPlanes - parameters.numClipIntersection ) );
+
+}
+
+// Resolve Includes
+
+const includePattern = /^[ \t]*#include +<([\w\d./]+)>/gm;
+
+function resolveIncludes( string ) {
+
+	return string.replace( includePattern, includeReplacer );
+
+}
+
+const shaderChunkMap = new Map();
+
+function includeReplacer( match, include ) {
+
+	let string = ShaderChunk[ include ];
+
+	if ( string === undefined ) {
+
+		const newInclude = shaderChunkMap.get( include );
+
+		if ( newInclude !== undefined ) {
+
+			string = ShaderChunk[ newInclude ];
+			console.warn( 'THREE.WebGLRenderer: Shader chunk "%s" has been deprecated. Use "%s" instead.', include, newInclude );
+
+		} else {
+
+			throw new Error( 'Can not resolve #include <' + include + '>' );
+
+		}
+
+	}
+
+	return resolveIncludes( string );
+
+}
+
+// Unroll Loops
+
+const unrollLoopPattern = /#pragma unroll_loop_start\s+for\s*\(\s*int\s+i\s*=\s*(\d+)\s*;\s*i\s*<\s*(\d+)\s*;\s*i\s*\+\+\s*\)\s*{([\s\S]+?)}\s+#pragma unroll_loop_end/g;
+
+function unrollLoops( string ) {
+
+	return string.replace( unrollLoopPattern, loopReplacer );
+
+}
+
+function loopReplacer( match, start, end, snippet ) {
+
+	let string = '';
+
+	for ( let i = parseInt( start ); i < parseInt( end ); i ++ ) {
+
+		string += snippet
+			.replace( /\[\s*i\s*\]/g, '[ ' + i + ' ]' )
+			.replace( /UNROLLED_LOOP_INDEX/g, i );
+
+	}
+
+	return string;
+
+}
+
+//
+
+function generatePrecision( parameters ) {
+
+	let precisionstring = `precision ${parameters.precision} float;
+	precision ${parameters.precision} int;
+	precision ${parameters.precision} sampler2D;
+	precision ${parameters.precision} samplerCube;
+	precision ${parameters.precision} sampler3D;
+	precision ${parameters.precision} sampler2DArray;
+	precision ${parameters.precision} sampler2DShadow;
+	precision ${parameters.precision} samplerCubeShadow;
+	precision ${parameters.precision} sampler2DArrayShadow;
+	precision ${parameters.precision} isampler2D;
+	precision ${parameters.precision} isampler3D;
+	precision ${parameters.precision} isamplerCube;
+	precision ${parameters.precision} isampler2DArray;
+	precision ${parameters.precision} usampler2D;
+	precision ${parameters.precision} usampler3D;
+	precision ${parameters.precision} usamplerCube;
+	precision ${parameters.precision} usampler2DArray;
+	`;
+
+	if ( parameters.precision === 'highp' ) {
+
+		precisionstring += '\n#define HIGH_PRECISION';
+
+	} else if ( parameters.precision === 'mediump' ) {
+
+		precisionstring += '\n#define MEDIUM_PRECISION';
+
+	} else if ( parameters.precision === 'lowp' ) {
+
+		precisionstring += '\n#define LOW_PRECISION';
+
+	}
+
+	return precisionstring;
+
+}
+
+function generateShadowMapTypeDefine( parameters ) {
+
+	let shadowMapTypeDefine = 'SHADOWMAP_TYPE_BASIC';
+
+	if ( parameters.shadowMapType === PCFShadowMap ) {
+
+		shadowMapTypeDefine = 'SHADOWMAP_TYPE_PCF';
+
+	} else if ( parameters.shadowMapType === PCFSoftShadowMap ) {
+
+		shadowMapTypeDefine = 'SHADOWMAP_TYPE_PCF_SOFT';
+
+	} else if ( parameters.shadowMapType === VSMShadowMap ) {
+
+		shadowMapTypeDefine = 'SHADOWMAP_TYPE_VSM';
+
+	}
+
+	return shadowMapTypeDefine;
+
+}
+
+function generateEnvMapTypeDefine( parameters ) {
+
+	let envMapTypeDefine = 'ENVMAP_TYPE_CUBE';
+
+	if ( parameters.envMap ) {
+
+		switch ( parameters.envMapMode ) {
+
+			case CubeReflectionMapping:
+			case CubeRefractionMapping:
+				envMapTypeDefine = 'ENVMAP_TYPE_CUBE';
+				break;
+
+			case CubeUVReflectionMapping:
+				envMapTypeDefine = 'ENVMAP_TYPE_CUBE_UV';
+				break;
+
+		}
+
+	}
+
+	return envMapTypeDefine;
+
+}
+
+function generateEnvMapModeDefine( parameters ) {
+
+	let envMapModeDefine = 'ENVMAP_MODE_REFLECTION';
+
+	if ( parameters.envMap ) {
+
+		switch ( parameters.envMapMode ) {
+
+			case CubeRefractionMapping:
+
+				envMapModeDefine = 'ENVMAP_MODE_REFRACTION';
+				break;
+
+		}
+
+	}
+
+	return envMapModeDefine;
+
+}
+
+function generateEnvMapBlendingDefine( parameters ) {
+
+	let envMapBlendingDefine = 'ENVMAP_BLENDING_NONE';
+
+	if ( parameters.envMap ) {
+
+		switch ( parameters.combine ) {
+
+			case MultiplyOperation:
+				envMapBlendingDefine = 'ENVMAP_BLENDING_MULTIPLY';
+				break;
+
+			case MixOperation:
+				envMapBlendingDefine = 'ENVMAP_BLENDING_MIX';
+				break;
+
+			case AddOperation:
+				envMapBlendingDefine = 'ENVMAP_BLENDING_ADD';
+				break;
+
+		}
+
+	}
+
+	return envMapBlendingDefine;
+
+}
+
+function generateCubeUVSize( parameters ) {
+
+	const imageHeight = parameters.envMapCubeUVHeight;
+
+	if ( imageHeight === null ) return null;
+
+	const maxMip = Math.log2( imageHeight ) - 2;
+
+	const texelHeight = 1.0 / imageHeight;
+
+	const texelWidth = 1.0 / ( 3 * Math.max( Math.pow( 2, maxMip ), 7 * 16 ) );
+
+	return { texelWidth, texelHeight, maxMip };
+
+}
+
+function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
+
+	// TODO Send this event to Three.js DevTools
+	// console.log( 'WebGLProgram', cacheKey );
+
+	const gl = renderer.getContext();
+
+	const defines = parameters.defines;
+
+	let vertexShader = parameters.vertexShader;
+	let fragmentShader = parameters.fragmentShader;
+
+	const shadowMapTypeDefine = generateShadowMapTypeDefine( parameters );
+	const envMapTypeDefine = generateEnvMapTypeDefine( parameters );
+	const envMapModeDefine = generateEnvMapModeDefine( parameters );
+	const envMapBlendingDefine = generateEnvMapBlendingDefine( parameters );
+	const envMapCubeUVSize = generateCubeUVSize( parameters );
+
+	const customVertexExtensions = generateVertexExtensions( parameters );
+
+	const customDefines = generateDefines( defines );
+
+	const program = gl.createProgram();
+
+	let prefixVertex, prefixFragment;
+	let versionString = parameters.glslVersion ? '#version ' + parameters.glslVersion + '\n' : '';
+
+	if ( parameters.isRawShaderMaterial ) {
+
+		prefixVertex = [
+
+			'#define SHADER_TYPE ' + parameters.shaderType,
+			'#define SHADER_NAME ' + parameters.shaderName,
+
+			customDefines
+
+		].filter( filterEmptyLine ).join( '\n' );
+
+		if ( prefixVertex.length > 0 ) {
+
+			prefixVertex += '\n';
+
+		}
+
+		prefixFragment = [
+
+			'#define SHADER_TYPE ' + parameters.shaderType,
+			'#define SHADER_NAME ' + parameters.shaderName,
+
+			customDefines
+
+		].filter( filterEmptyLine ).join( '\n' );
+
+		if ( prefixFragment.length > 0 ) {
+
+			prefixFragment += '\n';
+
+		}
+
+	} else {
+
+		prefixVertex = [
+
+			generatePrecision( parameters ),
+
+			'#define SHADER_TYPE ' + parameters.shaderType,
+			'#define SHADER_NAME ' + parameters.shaderName,
+
+			customDefines,
+
+			parameters.extensionClipCullDistance ? '#define USE_CLIP_DISTANCE' : '',
+			parameters.batching ? '#define USE_BATCHING' : '',
+			parameters.batchingColor ? '#define USE_BATCHING_COLOR' : '',
+			parameters.instancing ? '#define USE_INSTANCING' : '',
+			parameters.instancingColor ? '#define USE_INSTANCING_COLOR' : '',
+			parameters.instancingMorph ? '#define USE_INSTANCING_MORPH' : '',
+
+			parameters.useFog && parameters.fog ? '#define USE_FOG' : '',
+			parameters.useFog && parameters.fogExp2 ? '#define FOG_EXP2' : '',
+
+			parameters.map ? '#define USE_MAP' : '',
+			parameters.envMap ? '#define USE_ENVMAP' : '',
+			parameters.envMap ? '#define ' + envMapModeDefine : '',
+			parameters.lightMap ? '#define USE_LIGHTMAP' : '',
+			parameters.aoMap ? '#define USE_AOMAP' : '',
+			parameters.bumpMap ? '#define USE_BUMPMAP' : '',
+			parameters.normalMap ? '#define USE_NORMALMAP' : '',
+			parameters.normalMapObjectSpace ? '#define USE_NORMALMAP_OBJECTSPACE' : '',
+			parameters.normalMapTangentSpace ? '#define USE_NORMALMAP_TANGENTSPACE' : '',
+			parameters.displacementMap ? '#define USE_DISPLACEMENTMAP' : '',
+			parameters.emissiveMap ? '#define USE_EMISSIVEMAP' : '',
+
+			parameters.anisotropy ? '#define USE_ANISOTROPY' : '',
+			parameters.anisotropyMap ? '#define USE_ANISOTROPYMAP' : '',
+
+			parameters.clearcoatMap ? '#define USE_CLEARCOATMAP' : '',
+			parameters.clearcoatRoughnessMap ? '#define USE_CLEARCOAT_ROUGHNESSMAP' : '',
+			parameters.clearcoatNormalMap ? '#define USE_CLEARCOAT_NORMALMAP' : '',
+
+			parameters.iridescenceMap ? '#define USE_IRIDESCENCEMAP' : '',
+			parameters.iridescenceThicknessMap ? '#define USE_IRIDESCENCE_THICKNESSMAP' : '',
+
+			parameters.specularMap ? '#define USE_SPECULARMAP' : '',
+			parameters.specularColorMap ? '#define USE_SPECULAR_COLORMAP' : '',
+			parameters.specularIntensityMap ? '#define USE_SPECULAR_INTENSITYMAP' : '',
+
+			parameters.roughnessMap ? '#define USE_ROUGHNESSMAP' : '',
+			parameters.metalnessMap ? '#define USE_METALNESSMAP' : '',
+			parameters.alphaMap ? '#define USE_ALPHAMAP' : '',
+			parameters.alphaHash ? '#define USE_ALPHAHASH' : '',
+
+			parameters.transmission ? '#define USE_TRANSMISSION' : '',
+			parameters.transmissionMap ? '#define USE_TRANSMISSIONMAP' : '',
+			parameters.thicknessMap ? '#define USE_THICKNESSMAP' : '',
+
+			parameters.sheenColorMap ? '#define USE_SHEEN_COLORMAP' : '',
+			parameters.sheenRoughnessMap ? '#define USE_SHEEN_ROUGHNESSMAP' : '',
+
+			//
+
+			parameters.mapUv ? '#define MAP_UV ' + parameters.mapUv : '',
+			parameters.alphaMapUv ? '#define ALPHAMAP_UV ' + parameters.alphaMapUv : '',
+			parameters.lightMapUv ? '#define LIGHTMAP_UV ' + parameters.lightMapUv : '',
+			parameters.aoMapUv ? '#define AOMAP_UV ' + parameters.aoMapUv : '',
+			parameters.emissiveMapUv ? '#define EMISSIVEMAP_UV ' + parameters.emissiveMapUv : '',
+			parameters.bumpMapUv ? '#define BUMPMAP_UV ' + parameters.bumpMapUv : '',
+			parameters.normalMapUv ? '#define NORMALMAP_UV ' + parameters.normalMapUv : '',
+			parameters.displacementMapUv ? '#define DISPLACEMENTMAP_UV ' + parameters.displacementMapUv : '',
+
+			parameters.metalnessMapUv ? '#define METALNESSMAP_UV ' + parameters.metalnessMapUv : '',
+			parameters.roughnessMapUv ? '#define ROUGHNESSMAP_UV ' + parameters.roughnessMapUv : '',
+
+			parameters.anisotropyMapUv ? '#define ANISOTROPYMAP_UV ' + parameters.anisotropyMapUv : '',
+
+			parameters.clearcoatMapUv ? '#define CLEARCOATMAP_UV ' + parameters.clearcoatMapUv : '',
+			parameters.clearcoatNormalMapUv ? '#define CLEARCOAT_NORMALMAP_UV ' + parameters.clearcoatNormalMapUv : '',
+			parameters.clearcoatRoughnessMapUv ? '#define CLEARCOAT_ROUGHNESSMAP_UV ' + parameters.clearcoatRoughnessMapUv : '',
+
+			parameters.iridescenceMapUv ? '#define IRIDESCENCEMAP_UV ' + parameters.iridescenceMapUv : '',
+			parameters.iridescenceThicknessMapUv ? '#define IRIDESCENCE_THICKNESSMAP_UV ' + parameters.iridescenceThicknessMapUv : '',
+
+			parameters.sheenColorMapUv ? '#define SHEEN_COLORMAP_UV ' + parameters.sheenColorMapUv : '',
+			parameters.sheenRoughnessMapUv ? '#define SHEEN_ROUGHNESSMAP_UV ' + parameters.sheenRoughnessMapUv : '',
+
+			parameters.specularMapUv ? '#define SPECULARMAP_UV ' + parameters.specularMapUv : '',
+			parameters.specularColorMapUv ? '#define SPECULAR_COLORMAP_UV ' + parameters.specularColorMapUv : '',
+			parameters.specularIntensityMapUv ? '#define SPECULAR_INTENSITYMAP_UV ' + parameters.specularIntensityMapUv : '',
+
+			parameters.transmissionMapUv ? '#define TRANSMISSIONMAP_UV ' + parameters.transmissionMapUv : '',
+			parameters.thicknessMapUv ? '#define THICKNESSMAP_UV ' + parameters.thicknessMapUv : '',
+
+			//
+
+			parameters.vertexTangents && parameters.flatShading === false ? '#define USE_TANGENT' : '',
+			parameters.vertexColors ? '#define USE_COLOR' : '',
+			parameters.vertexAlphas ? '#define USE_COLOR_ALPHA' : '',
+			parameters.vertexUv1s ? '#define USE_UV1' : '',
+			parameters.vertexUv2s ? '#define USE_UV2' : '',
+			parameters.vertexUv3s ? '#define USE_UV3' : '',
+
+			parameters.pointsUvs ? '#define USE_POINTS_UV' : '',
+
+			parameters.flatShading ? '#define FLAT_SHADED' : '',
+
+			parameters.skinning ? '#define USE_SKINNING' : '',
+
+			parameters.morphTargets ? '#define USE_MORPHTARGETS' : '',
+			parameters.morphNormals && parameters.flatShading === false ? '#define USE_MORPHNORMALS' : '',
+			( parameters.morphColors ) ? '#define USE_MORPHCOLORS' : '',
+			( parameters.morphTargetsCount > 0 ) ? '#define MORPHTARGETS_TEXTURE_STRIDE ' + parameters.morphTextureStride : '',
+			( parameters.morphTargetsCount > 0 ) ? '#define MORPHTARGETS_COUNT ' + parameters.morphTargetsCount : '',
+			parameters.doubleSided ? '#define DOUBLE_SIDED' : '',
+			parameters.flipSided ? '#define FLIP_SIDED' : '',
+
+			parameters.shadowMapEnabled ? '#define USE_SHADOWMAP' : '',
+			parameters.shadowMapEnabled ? '#define ' + shadowMapTypeDefine : '',
+
+			parameters.sizeAttenuation ? '#define USE_SIZEATTENUATION' : '',
+
+			parameters.numLightProbes > 0 ? '#define USE_LIGHT_PROBES' : '',
+
+			parameters.logarithmicDepthBuffer ? '#define USE_LOGDEPTHBUF' : '',
+			parameters.reverseDepthBuffer ? '#define USE_REVERSEDEPTHBUF' : '',
+
+			'uniform mat4 modelMatrix;',
+			'uniform mat4 modelViewMatrix;',
+			'uniform mat4 projectionMatrix;',
+			'uniform mat4 viewMatrix;',
+			'uniform mat3 normalMatrix;',
+			'uniform vec3 cameraPosition;',
+			'uniform bool isOrthographic;',
+
+			'#ifdef USE_INSTANCING',
+
+			'	attribute mat4 instanceMatrix;',
+
+			'#endif',
+
+			'#ifdef USE_INSTANCING_COLOR',
+
+			'	attribute vec3 instanceColor;',
+
+			'#endif',
+
+			'#ifdef USE_INSTANCING_MORPH',
+
+			'	uniform sampler2D morphTexture;',
+
+			'#endif',
+
+			'attribute vec3 position;',
+			'attribute vec3 normal;',
+			'attribute vec2 uv;',
+
+			'#ifdef USE_UV1',
+
+			'	attribute vec2 uv1;',
+
+			'#endif',
+
+			'#ifdef USE_UV2',
+
+			'	attribute vec2 uv2;',
+
+			'#endif',
+
+			'#ifdef USE_UV3',
+
+			'	attribute vec2 uv3;',
+
+			'#endif',
+
+			'#ifdef USE_TANGENT',
+
+			'	attribute vec4 tangent;',
+
+			'#endif',
+
+			'#if defined( USE_COLOR_ALPHA )',
+
+			'	attribute vec4 color;',
+
+			'#elif defined( USE_COLOR )',
+
+			'	attribute vec3 color;',
+
+			'#endif',
+
+			'#ifdef USE_SKINNING',
+
+			'	attribute vec4 skinIndex;',
+			'	attribute vec4 skinWeight;',
+
+			'#endif',
+
+			'\n'
+
+		].filter( filterEmptyLine ).join( '\n' );
+
+		prefixFragment = [
+
+			generatePrecision( parameters ),
+
+			'#define SHADER_TYPE ' + parameters.shaderType,
+			'#define SHADER_NAME ' + parameters.shaderName,
+
+			customDefines,
+
+			parameters.useFog && parameters.fog ? '#define USE_FOG' : '',
+			parameters.useFog && parameters.fogExp2 ? '#define FOG_EXP2' : '',
+
+			parameters.alphaToCoverage ? '#define ALPHA_TO_COVERAGE' : '',
+			parameters.map ? '#define USE_MAP' : '',
+			parameters.matcap ? '#define USE_MATCAP' : '',
+			parameters.envMap ? '#define USE_ENVMAP' : '',
+			parameters.envMap ? '#define ' + envMapTypeDefine : '',
+			parameters.envMap ? '#define ' + envMapModeDefine : '',
+			parameters.envMap ? '#define ' + envMapBlendingDefine : '',
+			envMapCubeUVSize ? '#define CUBEUV_TEXEL_WIDTH ' + envMapCubeUVSize.texelWidth : '',
+			envMapCubeUVSize ? '#define CUBEUV_TEXEL_HEIGHT ' + envMapCubeUVSize.texelHeight : '',
+			envMapCubeUVSize ? '#define CUBEUV_MAX_MIP ' + envMapCubeUVSize.maxMip + '.0' : '',
+			parameters.lightMap ? '#define USE_LIGHTMAP' : '',
+			parameters.aoMap ? '#define USE_AOMAP' : '',
+			parameters.bumpMap ? '#define USE_BUMPMAP' : '',
+			parameters.normalMap ? '#define USE_NORMALMAP' : '',
+			parameters.normalMapObjectSpace ? '#define USE_NORMALMAP_OBJECTSPACE' : '',
+			parameters.normalMapTangentSpace ? '#define USE_NORMALMAP_TANGENTSPACE' : '',
+			parameters.emissiveMap ? '#define USE_EMISSIVEMAP' : '',
+
+			parameters.anisotropy ? '#define USE_ANISOTROPY' : '',
+			parameters.anisotropyMap ? '#define USE_ANISOTROPYMAP' : '',
+
+			parameters.clearcoat ? '#define USE_CLEARCOAT' : '',
+			parameters.clearcoatMap ? '#define USE_CLEARCOATMAP' : '',
+			parameters.clearcoatRoughnessMap ? '#define USE_CLEARCOAT_ROUGHNESSMAP' : '',
+			parameters.clearcoatNormalMap ? '#define USE_CLEARCOAT_NORMALMAP' : '',
+
+			parameters.dispersion ? '#define USE_DISPERSION' : '',
+
+			parameters.iridescence ? '#define USE_IRIDESCENCE' : '',
+			parameters.iridescenceMap ? '#define USE_IRIDESCENCEMAP' : '',
+			parameters.iridescenceThicknessMap ? '#define USE_IRIDESCENCE_THICKNESSMAP' : '',
+
+			parameters.specularMap ? '#define USE_SPECULARMAP' : '',
+			parameters.specularColorMap ? '#define USE_SPECULAR_COLORMAP' : '',
+			parameters.specularIntensityMap ? '#define USE_SPECULAR_INTENSITYMAP' : '',
+
+			parameters.roughnessMap ? '#define USE_ROUGHNESSMAP' : '',
+			parameters.metalnessMap ? '#define USE_METALNESSMAP' : '',
+
+			parameters.alphaMap ? '#define USE_ALPHAMAP' : '',
+			parameters.alphaTest ? '#define USE_ALPHATEST' : '',
+			parameters.alphaHash ? '#define USE_ALPHAHASH' : '',
+
+			parameters.sheen ? '#define USE_SHEEN' : '',
+			parameters.sheenColorMap ? '#define USE_SHEEN_COLORMAP' : '',
+			parameters.sheenRoughnessMap ? '#define USE_SHEEN_ROUGHNESSMAP' : '',
+
+			parameters.transmission ? '#define USE_TRANSMISSION' : '',
+			parameters.transmissionMap ? '#define USE_TRANSMISSIONMAP' : '',
+			parameters.thicknessMap ? '#define USE_THICKNESSMAP' : '',
+
+			parameters.vertexTangents && parameters.flatShading === false ? '#define USE_TANGENT' : '',
+			parameters.vertexColors || parameters.instancingColor || parameters.batchingColor ? '#define USE_COLOR' : '',
+			parameters.vertexAlphas ? '#define USE_COLOR_ALPHA' : '',
+			parameters.vertexUv1s ? '#define USE_UV1' : '',
+			parameters.vertexUv2s ? '#define USE_UV2' : '',
+			parameters.vertexUv3s ? '#define USE_UV3' : '',
+
+			parameters.pointsUvs ? '#define USE_POINTS_UV' : '',
+
+			parameters.gradientMap ? '#define USE_GRADIENTMAP' : '',
+
+			parameters.flatShading ? '#define FLAT_SHADED' : '',
+
+			parameters.doubleSided ? '#define DOUBLE_SIDED' : '',
+			parameters.flipSided ? '#define FLIP_SIDED' : '',
+
+			parameters.shadowMapEnabled ? '#define USE_SHADOWMAP' : '',
+			parameters.shadowMapEnabled ? '#define ' + shadowMapTypeDefine : '',
+
+			parameters.premultipliedAlpha ? '#define PREMULTIPLIED_ALPHA' : '',
+
+			parameters.numLightProbes > 0 ? '#define USE_LIGHT_PROBES' : '',
+
+			parameters.decodeVideoTexture ? '#define DECODE_VIDEO_TEXTURE' : '',
+
+			parameters.logarithmicDepthBuffer ? '#define USE_LOGDEPTHBUF' : '',
+			parameters.reverseDepthBuffer ? '#define USE_REVERSEDEPTHBUF' : '',
+
+			'uniform mat4 viewMatrix;',
+			'uniform vec3 cameraPosition;',
+			'uniform bool isOrthographic;',
+
+			( parameters.toneMapping !== NoToneMapping ) ? '#define TONE_MAPPING' : '',
+			( parameters.toneMapping !== NoToneMapping ) ? ShaderChunk[ 'tonemapping_pars_fragment' ] : '', // this code is required here because it is used by the toneMapping() function defined below
+			( parameters.toneMapping !== NoToneMapping ) ? getToneMappingFunction( 'toneMapping', parameters.toneMapping ) : '',
+
+			parameters.dithering ? '#define DITHERING' : '',
+			parameters.opaque ? '#define OPAQUE' : '',
+
+			ShaderChunk[ 'colorspace_pars_fragment' ], // this code is required here because it is used by the various encoding/decoding function defined below
+			getTexelEncodingFunction( 'linearToOutputTexel', parameters.outputColorSpace ),
+			getLuminanceFunction(),
+
+			parameters.useDepthPacking ? '#define DEPTH_PACKING ' + parameters.depthPacking : '',
+
+			'\n'
+
+		].filter( filterEmptyLine ).join( '\n' );
+
+	}
+
+	vertexShader = resolveIncludes( vertexShader );
+	vertexShader = replaceLightNums( vertexShader, parameters );
+	vertexShader = replaceClippingPlaneNums( vertexShader, parameters );
+
+	fragmentShader = resolveIncludes( fragmentShader );
+	fragmentShader = replaceLightNums( fragmentShader, parameters );
+	fragmentShader = replaceClippingPlaneNums( fragmentShader, parameters );
+
+	vertexShader = unrollLoops( vertexShader );
+	fragmentShader = unrollLoops( fragmentShader );
+
+	if ( parameters.isRawShaderMaterial !== true ) {
+
+		// GLSL 3.0 conversion for built-in materials and ShaderMaterial
+
+		versionString = '#version 300 es\n';
+
+		prefixVertex = [
+			customVertexExtensions,
+			'#define attribute in',
+			'#define varying out',
+			'#define texture2D texture'
+		].join( '\n' ) + '\n' + prefixVertex;
+
+		prefixFragment = [
+			'#define varying in',
+			( parameters.glslVersion === GLSL3 ) ? '' : 'layout(location = 0) out highp vec4 pc_fragColor;',
+			( parameters.glslVersion === GLSL3 ) ? '' : '#define gl_FragColor pc_fragColor',
+			'#define gl_FragDepthEXT gl_FragDepth',
+			'#define texture2D texture',
+			'#define textureCube texture',
+			'#define texture2DProj textureProj',
+			'#define texture2DLodEXT textureLod',
+			'#define texture2DProjLodEXT textureProjLod',
+			'#define textureCubeLodEXT textureLod',
+			'#define texture2DGradEXT textureGrad',
+			'#define texture2DProjGradEXT textureProjGrad',
+			'#define textureCubeGradEXT textureGrad'
+		].join( '\n' ) + '\n' + prefixFragment;
+
+	}
+
+	const vertexGlsl = versionString + prefixVertex + vertexShader;
+	const fragmentGlsl = versionString + prefixFragment + fragmentShader;
+
+	// console.log( '*VERTEX*', vertexGlsl );
+	// console.log( '*FRAGMENT*', fragmentGlsl );
+
+	const glVertexShader = WebGLShader( gl, gl.VERTEX_SHADER, vertexGlsl );
+	const glFragmentShader = WebGLShader( gl, gl.FRAGMENT_SHADER, fragmentGlsl );
+
+	gl.attachShader( program, glVertexShader );
+	gl.attachShader( program, glFragmentShader );
+
+	// Force a particular attribute to index 0.
+
+	if ( parameters.index0AttributeName !== undefined ) {
+
+		gl.bindAttribLocation( program, 0, parameters.index0AttributeName );
+
+	} else if ( parameters.morphTargets === true ) {
+
+		// programs with morphTargets displace position out of attribute 0
+		gl.bindAttribLocation( program, 0, 'position' );
+
+	}
+
+	gl.linkProgram( program );
+
+	function onFirstUse( self ) {
+
+		// check for link errors
+		if ( renderer.debug.checkShaderErrors ) {
+
+			const programLog = gl.getProgramInfoLog( program ).trim();
+			const vertexLog = gl.getShaderInfoLog( glVertexShader ).trim();
+			const fragmentLog = gl.getShaderInfoLog( glFragmentShader ).trim();
+
+			let runnable = true;
+			let haveDiagnostics = true;
+
+			if ( gl.getProgramParameter( program, gl.LINK_STATUS ) === false ) {
+
+				runnable = false;
+
+				if ( typeof renderer.debug.onShaderError === 'function' ) {
+
+					renderer.debug.onShaderError( gl, program, glVertexShader, glFragmentShader );
+
+				} else {
+
+					// default error reporting
+
+					const vertexErrors = getShaderErrors( gl, glVertexShader, 'vertex' );
+					const fragmentErrors = getShaderErrors( gl, glFragmentShader, 'fragment' );
+
+					console.error(
+						'THREE.WebGLProgram: Shader Error ' + gl.getError() + ' - ' +
+						'VALIDATE_STATUS ' + gl.getProgramParameter( program, gl.VALIDATE_STATUS ) + '\n\n' +
+						'Material Name: ' + self.name + '\n' +
+						'Material Type: ' + self.type + '\n\n' +
+						'Program Info Log: ' + programLog + '\n' +
+						vertexErrors + '\n' +
+						fragmentErrors
+					);
+
+				}
+
+			} else if ( programLog !== '' ) {
+
+				console.warn( 'THREE.WebGLProgram: Program Info Log:', programLog );
+
+			} else if ( vertexLog === '' || fragmentLog === '' ) {
+
+				haveDiagnostics = false;
+
+			}
+
+			if ( haveDiagnostics ) {
+
+				self.diagnostics = {
+
+					runnable: runnable,
+
+					programLog: programLog,
+
+					vertexShader: {
+
+						log: vertexLog,
+						prefix: prefixVertex
+
+					},
+
+					fragmentShader: {
+
+						log: fragmentLog,
+						prefix: prefixFragment
+
+					}
+
+				};
+
+			}
+
+		}
+
+		// Clean up
+
+		// Crashes in iOS9 and iOS10. #18402
+		// gl.detachShader( program, glVertexShader );
+		// gl.detachShader( program, glFragmentShader );
+
+		gl.deleteShader( glVertexShader );
+		gl.deleteShader( glFragmentShader );
+
+		cachedUniforms = new WebGLUniforms( gl, program );
+		cachedAttributes = fetchAttributeLocations( gl, program );
+
+	}
+
+	// set up caching for uniform locations
+
+	let cachedUniforms;
+
+	this.getUniforms = function () {
+
+		if ( cachedUniforms === undefined ) {
+
+			// Populates cachedUniforms and cachedAttributes
+			onFirstUse( this );
+
+		}
+
+		return cachedUniforms;
+
+	};
+
+	// set up caching for attribute locations
+
+	let cachedAttributes;
+
+	this.getAttributes = function () {
+
+		if ( cachedAttributes === undefined ) {
+
+			// Populates cachedAttributes and cachedUniforms
+			onFirstUse( this );
+
+		}
+
+		return cachedAttributes;
+
+	};
+
+	// indicate when the program is ready to be used. if the KHR_parallel_shader_compile extension isn't supported,
+	// flag the program as ready immediately. It may cause a stall when it's first used.
+
+	let programReady = ( parameters.rendererExtensionParallelShaderCompile === false );
+
+	this.isReady = function () {
+
+		if ( programReady === false ) {
+
+			programReady = gl.getProgramParameter( program, COMPLETION_STATUS_KHR );
+
+		}
+
+		return programReady;
+
+	};
+
+	// free resource
+
+	this.destroy = function () {
+
+		bindingStates.releaseStatesOfProgram( this );
+
+		gl.deleteProgram( program );
+		this.program = undefined;
+
+	};
+
+	//
+
+	this.type = parameters.shaderType;
+	this.name = parameters.shaderName;
+	this.id = programIdCount ++;
+	this.cacheKey = cacheKey;
+	this.usedTimes = 1;
+	this.program = program;
+	this.vertexShader = glVertexShader;
+	this.fragmentShader = glFragmentShader;
+
+	return this;
+
+}
+
+let _id$1 = 0;
+
+class WebGLShaderCache {
+
+	constructor() {
+
+		this.shaderCache = new Map();
+		this.materialCache = new Map();
+
+	}
+
+	update( material ) {
+
+		const vertexShader = material.vertexShader;
+		const fragmentShader = material.fragmentShader;
+
+		const vertexShaderStage = this._getShaderStage( vertexShader );
+		const fragmentShaderStage = this._getShaderStage( fragmentShader );
+
+		const materialShaders = this._getShaderCacheForMaterial( material );
+
+		if ( materialShaders.has( vertexShaderStage ) === false ) {
+
+			materialShaders.add( vertexShaderStage );
+			vertexShaderStage.usedTimes ++;
+
+		}
+
+		if ( materialShaders.has( fragmentShaderStage ) === false ) {
+
+			materialShaders.add( fragmentShaderStage );
+			fragmentShaderStage.usedTimes ++;
+
+		}
+
+		return this;
+
+	}
+
+	remove( material ) {
+
+		const materialShaders = this.materialCache.get( material );
+
+		for ( const shaderStage of materialShaders ) {
+
+			shaderStage.usedTimes --;
+
+			if ( shaderStage.usedTimes === 0 ) this.shaderCache.delete( shaderStage.code );
+
+		}
+
+		this.materialCache.delete( material );
+
+		return this;
+
+	}
+
+	getVertexShaderID( material ) {
+
+		return this._getShaderStage( material.vertexShader ).id;
+
+	}
+
+	getFragmentShaderID( material ) {
+
+		return this._getShaderStage( material.fragmentShader ).id;
+
+	}
+
+	dispose() {
+
+		this.shaderCache.clear();
+		this.materialCache.clear();
+
+	}
+
+	_getShaderCacheForMaterial( material ) {
+
+		const cache = this.materialCache;
+		let set = cache.get( material );
+
+		if ( set === undefined ) {
+
+			set = new Set();
+			cache.set( material, set );
+
+		}
+
+		return set;
+
+	}
+
+	_getShaderStage( code ) {
+
+		const cache = this.shaderCache;
+		let stage = cache.get( code );
+
+		if ( stage === undefined ) {
+
+			stage = new WebGLShaderStage( code );
+			cache.set( code, stage );
+
+		}
+
+		return stage;
+
+	}
+
+}
+
+class WebGLShaderStage {
+
+	constructor( code ) {
+
+		this.id = _id$1 ++;
+
+		this.code = code;
+		this.usedTimes = 0;
+
+	}
+
+}
+
+function WebGLPrograms( renderer, cubemaps, cubeuvmaps, extensions, capabilities, bindingStates, clipping ) {
+
+	const _programLayers = new Layers();
+	const _customShaders = new WebGLShaderCache();
+	const _activeChannels = new Set();
+	const programs = [];
+
+	const logarithmicDepthBuffer = capabilities.logarithmicDepthBuffer;
+	const reverseDepthBuffer = capabilities.reverseDepthBuffer;
+	const SUPPORTS_VERTEX_TEXTURES = capabilities.vertexTextures;
+
+	let precision = capabilities.precision;
+
+	const shaderIDs = {
+		MeshDepthMaterial: 'depth',
+		MeshDistanceMaterial: 'distanceRGBA',
+		MeshNormalMaterial: 'normal',
+		MeshBasicMaterial: 'basic',
+		MeshLambertMaterial: 'lambert',
+		MeshPhongMaterial: 'phong',
+		MeshToonMaterial: 'toon',
+		MeshStandardMaterial: 'physical',
+		MeshPhysicalMaterial: 'physical',
+		MeshMatcapMaterial: 'matcap',
+		LineBasicMaterial: 'basic',
+		LineDashedMaterial: 'dashed',
+		PointsMaterial: 'points',
+		ShadowMaterial: 'shadow',
+		SpriteMaterial: 'sprite'
+	};
+
+	function getChannel( value ) {
+
+		_activeChannels.add( value );
+
+		if ( value === 0 ) return 'uv';
+
+		return `uv${ value }`;
+
+	}
+
+	function getParameters( material, lights, shadows, scene, object ) {
+
+		const fog = scene.fog;
+		const geometry = object.geometry;
+		const environment = material.isMeshStandardMaterial ? scene.environment : null;
+
+		const envMap = ( material.isMeshStandardMaterial ? cubeuvmaps : cubemaps ).get( material.envMap || environment );
+		const envMapCubeUVHeight = ( !! envMap ) && ( envMap.mapping === CubeUVReflectionMapping ) ? envMap.image.height : null;
+
+		const shaderID = shaderIDs[ material.type ];
+
+		// heuristics to create shader parameters according to lights in the scene
+		// (not to blow over maxLights budget)
+
+		if ( material.precision !== null ) {
+
+			precision = capabilities.getMaxPrecision( material.precision );
+
+			if ( precision !== material.precision ) {
+
+				console.warn( 'THREE.WebGLProgram.getParameters:', material.precision, 'not supported, using', precision, 'instead.' );
+
+			}
+
+		}
+
+		//
+
+		const morphAttribute = geometry.morphAttributes.position || geometry.morphAttributes.normal || geometry.morphAttributes.color;
+		const morphTargetsCount = ( morphAttribute !== undefined ) ? morphAttribute.length : 0;
+
+		let morphTextureStride = 0;
+
+		if ( geometry.morphAttributes.position !== undefined ) morphTextureStride = 1;
+		if ( geometry.morphAttributes.normal !== undefined ) morphTextureStride = 2;
+		if ( geometry.morphAttributes.color !== undefined ) morphTextureStride = 3;
+
+		//
+
+		let vertexShader, fragmentShader;
+		let customVertexShaderID, customFragmentShaderID;
+
+		if ( shaderID ) {
+
+			const shader = ShaderLib[ shaderID ];
+
+			vertexShader = shader.vertexShader;
+			fragmentShader = shader.fragmentShader;
+
+		} else {
+
+			vertexShader = material.vertexShader;
+			fragmentShader = material.fragmentShader;
+
+			_customShaders.update( material );
+
+			customVertexShaderID = _customShaders.getVertexShaderID( material );
+			customFragmentShaderID = _customShaders.getFragmentShaderID( material );
+
+		}
+
+		const currentRenderTarget = renderer.getRenderTarget();
+
+		const IS_INSTANCEDMESH = object.isInstancedMesh === true;
+		const IS_BATCHEDMESH = object.isBatchedMesh === true;
+
+		const HAS_MAP = !! material.map;
+		const HAS_MATCAP = !! material.matcap;
+		const HAS_ENVMAP = !! envMap;
+		const HAS_AOMAP = !! material.aoMap;
+		const HAS_LIGHTMAP = !! material.lightMap;
+		const HAS_BUMPMAP = !! material.bumpMap;
+		const HAS_NORMALMAP = !! material.normalMap;
+		const HAS_DISPLACEMENTMAP = !! material.displacementMap;
+		const HAS_EMISSIVEMAP = !! material.emissiveMap;
+
+		const HAS_METALNESSMAP = !! material.metalnessMap;
+		const HAS_ROUGHNESSMAP = !! material.roughnessMap;
+
+		const HAS_ANISOTROPY = material.anisotropy > 0;
+		const HAS_CLEARCOAT = material.clearcoat > 0;
+		const HAS_DISPERSION = material.dispersion > 0;
+		const HAS_IRIDESCENCE = material.iridescence > 0;
+		const HAS_SHEEN = material.sheen > 0;
+		const HAS_TRANSMISSION = material.transmission > 0;
+
+		const HAS_ANISOTROPYMAP = HAS_ANISOTROPY && !! material.anisotropyMap;
+
+		const HAS_CLEARCOATMAP = HAS_CLEARCOAT && !! material.clearcoatMap;
+		const HAS_CLEARCOAT_NORMALMAP = HAS_CLEARCOAT && !! material.clearcoatNormalMap;
+		const HAS_CLEARCOAT_ROUGHNESSMAP = HAS_CLEARCOAT && !! material.clearcoatRoughnessMap;
+
+		const HAS_IRIDESCENCEMAP = HAS_IRIDESCENCE && !! material.iridescenceMap;
+		const HAS_IRIDESCENCE_THICKNESSMAP = HAS_IRIDESCENCE && !! material.iridescenceThicknessMap;
+
+		const HAS_SHEEN_COLORMAP = HAS_SHEEN && !! material.sheenColorMap;
+		const HAS_SHEEN_ROUGHNESSMAP = HAS_SHEEN && !! material.sheenRoughnessMap;
+
+		const HAS_SPECULARMAP = !! material.specularMap;
+		const HAS_SPECULAR_COLORMAP = !! material.specularColorMap;
+		const HAS_SPECULAR_INTENSITYMAP = !! material.specularIntensityMap;
+
+		const HAS_TRANSMISSIONMAP = HAS_TRANSMISSION && !! material.transmissionMap;
+		const HAS_THICKNESSMAP = HAS_TRANSMISSION && !! material.thicknessMap;
+
+		const HAS_GRADIENTMAP = !! material.gradientMap;
+
+		const HAS_ALPHAMAP = !! material.alphaMap;
+
+		const HAS_ALPHATEST = material.alphaTest > 0;
+
+		const HAS_ALPHAHASH = !! material.alphaHash;
+
+		const HAS_EXTENSIONS = !! material.extensions;
+
+		let toneMapping = NoToneMapping;
+
+		if ( material.toneMapped ) {
+
+			if ( currentRenderTarget === null || currentRenderTarget.isXRRenderTarget === true ) {
+
+				toneMapping = renderer.toneMapping;
+
+			}
+
+		}
+
+		const parameters = {
+
+			shaderID: shaderID,
+			shaderType: material.type,
+			shaderName: material.name,
+
+			vertexShader: vertexShader,
+			fragmentShader: fragmentShader,
+			defines: material.defines,
+
+			customVertexShaderID: customVertexShaderID,
+			customFragmentShaderID: customFragmentShaderID,
+
+			isRawShaderMaterial: material.isRawShaderMaterial === true,
+			glslVersion: material.glslVersion,
+
+			precision: precision,
+
+			batching: IS_BATCHEDMESH,
+			batchingColor: IS_BATCHEDMESH && object._colorsTexture !== null,
+			instancing: IS_INSTANCEDMESH,
+			instancingColor: IS_INSTANCEDMESH && object.instanceColor !== null,
+			instancingMorph: IS_INSTANCEDMESH && object.morphTexture !== null,
+
+			supportsVertexTextures: SUPPORTS_VERTEX_TEXTURES,
+			outputColorSpace: ( currentRenderTarget === null ) ? renderer.outputColorSpace : ( currentRenderTarget.isXRRenderTarget === true ? currentRenderTarget.texture.colorSpace : LinearSRGBColorSpace ),
+			alphaToCoverage: !! material.alphaToCoverage,
+
+			map: HAS_MAP,
+			matcap: HAS_MATCAP,
+			envMap: HAS_ENVMAP,
+			envMapMode: HAS_ENVMAP && envMap.mapping,
+			envMapCubeUVHeight: envMapCubeUVHeight,
+			aoMap: HAS_AOMAP,
+			lightMap: HAS_LIGHTMAP,
+			bumpMap: HAS_BUMPMAP,
+			normalMap: HAS_NORMALMAP,
+			displacementMap: SUPPORTS_VERTEX_TEXTURES && HAS_DISPLACEMENTMAP,
+			emissiveMap: HAS_EMISSIVEMAP,
+
+			normalMapObjectSpace: HAS_NORMALMAP && material.normalMapType === ObjectSpaceNormalMap,
+			normalMapTangentSpace: HAS_NORMALMAP && material.normalMapType === TangentSpaceNormalMap,
+
+			metalnessMap: HAS_METALNESSMAP,
+			roughnessMap: HAS_ROUGHNESSMAP,
+
+			anisotropy: HAS_ANISOTROPY,
+			anisotropyMap: HAS_ANISOTROPYMAP,
+
+			clearcoat: HAS_CLEARCOAT,
+			clearcoatMap: HAS_CLEARCOATMAP,
+			clearcoatNormalMap: HAS_CLEARCOAT_NORMALMAP,
+			clearcoatRoughnessMap: HAS_CLEARCOAT_ROUGHNESSMAP,
+
+			dispersion: HAS_DISPERSION,
+
+			iridescence: HAS_IRIDESCENCE,
+			iridescenceMap: HAS_IRIDESCENCEMAP,
+			iridescenceThicknessMap: HAS_IRIDESCENCE_THICKNESSMAP,
+
+			sheen: HAS_SHEEN,
+			sheenColorMap: HAS_SHEEN_COLORMAP,
+			sheenRoughnessMap: HAS_SHEEN_ROUGHNESSMAP,
+
+			specularMap: HAS_SPECULARMAP,
+			specularColorMap: HAS_SPECULAR_COLORMAP,
+			specularIntensityMap: HAS_SPECULAR_INTENSITYMAP,
+
+			transmission: HAS_TRANSMISSION,
+			transmissionMap: HAS_TRANSMISSIONMAP,
+			thicknessMap: HAS_THICKNESSMAP,
+
+			gradientMap: HAS_GRADIENTMAP,
+
+			opaque: material.transparent === false && material.blending === NormalBlending && material.alphaToCoverage === false,
+
+			alphaMap: HAS_ALPHAMAP,
+			alphaTest: HAS_ALPHATEST,
+			alphaHash: HAS_ALPHAHASH,
+
+			combine: material.combine,
+
+			//
+
+			mapUv: HAS_MAP && getChannel( material.map.channel ),
+			aoMapUv: HAS_AOMAP && getChannel( material.aoMap.channel ),
+			lightMapUv: HAS_LIGHTMAP && getChannel( material.lightMap.channel ),
+			bumpMapUv: HAS_BUMPMAP && getChannel( material.bumpMap.channel ),
+			normalMapUv: HAS_NORMALMAP && getChannel( material.normalMap.channel ),
+			displacementMapUv: HAS_DISPLACEMENTMAP && getChannel( material.displacementMap.channel ),
+			emissiveMapUv: HAS_EMISSIVEMAP && getChannel( material.emissiveMap.channel ),
+
+			metalnessMapUv: HAS_METALNESSMAP && getChannel( material.metalnessMap.channel ),
+			roughnessMapUv: HAS_ROUGHNESSMAP && getChannel( material.roughnessMap.channel ),
+
+			anisotropyMapUv: HAS_ANISOTROPYMAP && getChannel( material.anisotropyMap.channel ),
+
+			clearcoatMapUv: HAS_CLEARCOATMAP && getChannel( material.clearcoatMap.channel ),
+			clearcoatNormalMapUv: HAS_CLEARCOAT_NORMALMAP && getChannel( material.clearcoatNormalMap.channel ),
+			clearcoatRoughnessMapUv: HAS_CLEARCOAT_ROUGHNESSMAP && getChannel( material.clearcoatRoughnessMap.channel ),
+
+			iridescenceMapUv: HAS_IRIDESCENCEMAP && getChannel( material.iridescenceMap.channel ),
+			iridescenceThicknessMapUv: HAS_IRIDESCENCE_THICKNESSMAP && getChannel( material.iridescenceThicknessMap.channel ),
+
+			sheenColorMapUv: HAS_SHEEN_COLORMAP && getChannel( material.sheenColorMap.channel ),
+			sheenRoughnessMapUv: HAS_SHEEN_ROUGHNESSMAP && getChannel( material.sheenRoughnessMap.channel ),
+
+			specularMapUv: HAS_SPECULARMAP && getChannel( material.specularMap.channel ),
+			specularColorMapUv: HAS_SPECULAR_COLORMAP && getChannel( material.specularColorMap.channel ),
+			specularIntensityMapUv: HAS_SPECULAR_INTENSITYMAP && getChannel( material.specularIntensityMap.channel ),
+
+			transmissionMapUv: HAS_TRANSMISSIONMAP && getChannel( material.transmissionMap.channel ),
+			thicknessMapUv: HAS_THICKNESSMAP && getChannel( material.thicknessMap.channel ),
+
+			alphaMapUv: HAS_ALPHAMAP && getChannel( material.alphaMap.channel ),
+
+			//
+
+			vertexTangents: !! geometry.attributes.tangent && ( HAS_NORMALMAP || HAS_ANISOTROPY ),
+			vertexColors: material.vertexColors,
+			vertexAlphas: material.vertexColors === true && !! geometry.attributes.color && geometry.attributes.color.itemSize === 4,
+
+			pointsUvs: object.isPoints === true && !! geometry.attributes.uv && ( HAS_MAP || HAS_ALPHAMAP ),
+
+			fog: !! fog,
+			useFog: material.fog === true,
+			fogExp2: ( !! fog && fog.isFogExp2 ),
+
+			flatShading: material.flatShading === true,
+
+			sizeAttenuation: material.sizeAttenuation === true,
+			logarithmicDepthBuffer: logarithmicDepthBuffer,
+			reverseDepthBuffer: reverseDepthBuffer,
+
+			skinning: object.isSkinnedMesh === true,
+
+			morphTargets: geometry.morphAttributes.position !== undefined,
+			morphNormals: geometry.morphAttributes.normal !== undefined,
+			morphColors: geometry.morphAttributes.color !== undefined,
+			morphTargetsCount: morphTargetsCount,
+			morphTextureStride: morphTextureStride,
+
+			numDirLights: lights.directional.length,
+			numPointLights: lights.point.length,
+			numSpotLights: lights.spot.length,
+			numSpotLightMaps: lights.spotLightMap.length,
+			numRectAreaLights: lights.rectArea.length,
+			numHemiLights: lights.hemi.length,
+
+			numDirLightShadows: lights.directionalShadowMap.length,
+			numPointLightShadows: lights.pointShadowMap.length,
+			numSpotLightShadows: lights.spotShadowMap.length,
+			numSpotLightShadowsWithMaps: lights.numSpotLightShadowsWithMaps,
+
+			numLightProbes: lights.numLightProbes,
+
+			numClippingPlanes: clipping.numPlanes,
+			numClipIntersection: clipping.numIntersection,
+
+			dithering: material.dithering,
+
+			shadowMapEnabled: renderer.shadowMap.enabled && shadows.length > 0,
+			shadowMapType: renderer.shadowMap.type,
+
+			toneMapping: toneMapping,
+
+			decodeVideoTexture: HAS_MAP && ( material.map.isVideoTexture === true ) && ( ColorManagement.getTransfer( material.map.colorSpace ) === SRGBTransfer ),
+
+			premultipliedAlpha: material.premultipliedAlpha,
+
+			doubleSided: material.side === DoubleSide,
+			flipSided: material.side === BackSide,
+
+			useDepthPacking: material.depthPacking >= 0,
+			depthPacking: material.depthPacking || 0,
+
+			index0AttributeName: material.index0AttributeName,
+
+			extensionClipCullDistance: HAS_EXTENSIONS && material.extensions.clipCullDistance === true && extensions.has( 'WEBGL_clip_cull_distance' ),
+			extensionMultiDraw: ( HAS_EXTENSIONS && material.extensions.multiDraw === true || IS_BATCHEDMESH ) && extensions.has( 'WEBGL_multi_draw' ),
+
+			rendererExtensionParallelShaderCompile: extensions.has( 'KHR_parallel_shader_compile' ),
+
+			customProgramCacheKey: material.customProgramCacheKey()
+
+		};
+
+		// the usage of getChannel() determines the active texture channels for this shader
+
+		parameters.vertexUv1s = _activeChannels.has( 1 );
+		parameters.vertexUv2s = _activeChannels.has( 2 );
+		parameters.vertexUv3s = _activeChannels.has( 3 );
+
+		_activeChannels.clear();
+
+		return parameters;
+
+	}
+
+	function getProgramCacheKey( parameters ) {
+
+		const array = [];
+
+		if ( parameters.shaderID ) {
+
+			array.push( parameters.shaderID );
+
+		} else {
+
+			array.push( parameters.customVertexShaderID );
+			array.push( parameters.customFragmentShaderID );
+
+		}
+
+		if ( parameters.defines !== undefined ) {
+
+			for ( const name in parameters.defines ) {
+
+				array.push( name );
+				array.push( parameters.defines[ name ] );
+
+			}
+
+		}
+
+		if ( parameters.isRawShaderMaterial === false ) {
+
+			getProgramCacheKeyParameters( array, parameters );
+			getProgramCacheKeyBooleans( array, parameters );
+			array.push( renderer.outputColorSpace );
+
+		}
+
+		array.push( parameters.customProgramCacheKey );
+
+		return array.join();
+
+	}
+
+	function getProgramCacheKeyParameters( array, parameters ) {
+
+		array.push( parameters.precision );
+		array.push( parameters.outputColorSpace );
+		array.push( parameters.envMapMode );
+		array.push( parameters.envMapCubeUVHeight );
+		array.push( parameters.mapUv );
+		array.push( parameters.alphaMapUv );
+		array.push( parameters.lightMapUv );
+		array.push( parameters.aoMapUv );
+		array.push( parameters.bumpMapUv );
+		array.push( parameters.normalMapUv );
+		array.push( parameters.displacementMapUv );
+		array.push( parameters.emissiveMapUv );
+		array.push( parameters.metalnessMapUv );
+		array.push( parameters.roughnessMapUv );
+		array.push( parameters.anisotropyMapUv );
+		array.push( parameters.clearcoatMapUv );
+		array.push( parameters.clearcoatNormalMapUv );
+		array.push( parameters.clearcoatRoughnessMapUv );
+		array.push( parameters.iridescenceMapUv );
+		array.push( parameters.iridescenceThicknessMapUv );
+		array.push( parameters.sheenColorMapUv );
+		array.push( parameters.sheenRoughnessMapUv );
+		array.push( parameters.specularMapUv );
+		array.push( parameters.specularColorMapUv );
+		array.push( parameters.specularIntensityMapUv );
+		array.push( parameters.transmissionMapUv );
+		array.push( parameters.thicknessMapUv );
+		array.push( parameters.combine );
+		array.push( parameters.fogExp2 );
+		array.push( parameters.sizeAttenuation );
+		array.push( parameters.morphTargetsCount );
+		array.push( parameters.morphAttributeCount );
+		array.push( parameters.numDirLights );
+		array.push( parameters.numPointLights );
+		array.push( parameters.numSpotLights );
+		array.push( parameters.numSpotLightMaps );
+		array.push( parameters.numHemiLights );
+		array.push( parameters.numRectAreaLights );
+		array.push( parameters.numDirLightShadows );
+		array.push( parameters.numPointLightShadows );
+		array.push( parameters.numSpotLightShadows );
+		array.push( parameters.numSpotLightShadowsWithMaps );
+		array.push( parameters.numLightProbes );
+		array.push( parameters.shadowMapType );
+		array.push( parameters.toneMapping );
+		array.push( parameters.numClippingPlanes );
+		array.push( parameters.numClipIntersection );
+		array.push( parameters.depthPacking );
+
+	}
+
+	function getProgramCacheKeyBooleans( array, parameters ) {
+
+		_programLayers.disableAll();
+
+		if ( parameters.supportsVertexTextures )
+			_programLayers.enable( 0 );
+		if ( parameters.instancing )
+			_programLayers.enable( 1 );
+		if ( parameters.instancingColor )
+			_programLayers.enable( 2 );
+		if ( parameters.instancingMorph )
+			_programLayers.enable( 3 );
+		if ( parameters.matcap )
+			_programLayers.enable( 4 );
+		if ( parameters.envMap )
+			_programLayers.enable( 5 );
+		if ( parameters.normalMapObjectSpace )
+			_programLayers.enable( 6 );
+		if ( parameters.normalMapTangentSpace )
+			_programLayers.enable( 7 );
+		if ( parameters.clearcoat )
+			_programLayers.enable( 8 );
+		if ( parameters.iridescence )
+			_programLayers.enable( 9 );
+		if ( parameters.alphaTest )
+			_programLayers.enable( 10 );
+		if ( parameters.vertexColors )
+			_programLayers.enable( 11 );
+		if ( parameters.vertexAlphas )
+			_programLayers.enable( 12 );
+		if ( parameters.vertexUv1s )
+			_programLayers.enable( 13 );
+		if ( parameters.vertexUv2s )
+			_programLayers.enable( 14 );
+		if ( parameters.vertexUv3s )
+			_programLayers.enable( 15 );
+		if ( parameters.vertexTangents )
+			_programLayers.enable( 16 );
+		if ( parameters.anisotropy )
+			_programLayers.enable( 17 );
+		if ( parameters.alphaHash )
+			_programLayers.enable( 18 );
+		if ( parameters.batching )
+			_programLayers.enable( 19 );
+		if ( parameters.dispersion )
+			_programLayers.enable( 20 );
+		if ( parameters.batchingColor )
+			_programLayers.enable( 21 );
+
+		array.push( _programLayers.mask );
+		_programLayers.disableAll();
+
+		if ( parameters.fog )
+			_programLayers.enable( 0 );
+		if ( parameters.useFog )
+			_programLayers.enable( 1 );
+		if ( parameters.flatShading )
+			_programLayers.enable( 2 );
+		if ( parameters.logarithmicDepthBuffer )
+			_programLayers.enable( 3 );
+		if ( parameters.reverseDepthBuffer )
+			_programLayers.enable( 4 );
+		if ( parameters.skinning )
+			_programLayers.enable( 5 );
+		if ( parameters.morphTargets )
+			_programLayers.enable( 6 );
+		if ( parameters.morphNormals )
+			_programLayers.enable( 7 );
+		if ( parameters.morphColors )
+			_programLayers.enable( 8 );
+		if ( parameters.premultipliedAlpha )
+			_programLayers.enable( 9 );
+		if ( parameters.shadowMapEnabled )
+			_programLayers.enable( 10 );
+		if ( parameters.doubleSided )
+			_programLayers.enable( 11 );
+		if ( parameters.flipSided )
+			_programLayers.enable( 12 );
+		if ( parameters.useDepthPacking )
+			_programLayers.enable( 13 );
+		if ( parameters.dithering )
+			_programLayers.enable( 14 );
+		if ( parameters.transmission )
+			_programLayers.enable( 15 );
+		if ( parameters.sheen )
+			_programLayers.enable( 16 );
+		if ( parameters.opaque )
+			_programLayers.enable( 17 );
+		if ( parameters.pointsUvs )
+			_programLayers.enable( 18 );
+		if ( parameters.decodeVideoTexture )
+			_programLayers.enable( 19 );
+		if ( parameters.alphaToCoverage )
+			_programLayers.enable( 20 );
+
+		array.push( _programLayers.mask );
+
+	}
+
+	function getUniforms( material ) {
+
+		const shaderID = shaderIDs[ material.type ];
+		let uniforms;
+
+		if ( shaderID ) {
+
+			const shader = ShaderLib[ shaderID ];
+			uniforms = UniformsUtils.clone( shader.uniforms );
+
+		} else {
+
+			uniforms = material.uniforms;
+
+		}
+
+		return uniforms;
+
+	}
+
+	function acquireProgram( parameters, cacheKey ) {
+
+		let program;
+
+		// Check if code has been already compiled
+		for ( let p = 0, pl = programs.length; p < pl; p ++ ) {
+
+			const preexistingProgram = programs[ p ];
+
+			if ( preexistingProgram.cacheKey === cacheKey ) {
+
+				program = preexistingProgram;
+				++ program.usedTimes;
+
+				break;
+
+			}
+
+		}
+
+		if ( program === undefined ) {
+
+			program = new WebGLProgram( renderer, cacheKey, parameters, bindingStates );
+			programs.push( program );
+
+		}
+
+		return program;
+
+	}
+
+	function releaseProgram( program ) {
+
+		if ( -- program.usedTimes === 0 ) {
+
+			// Remove from unordered set
+			const i = programs.indexOf( program );
+			programs[ i ] = programs[ programs.length - 1 ];
+			programs.pop();
+
+			// Free WebGL resources
+			program.destroy();
+
+		}
+
+	}
+
+	function releaseShaderCache( material ) {
+
+		_customShaders.remove( material );
+
+	}
+
+	function dispose() {
+
+		_customShaders.dispose();
+
+	}
+
+	return {
+		getParameters: getParameters,
+		getProgramCacheKey: getProgramCacheKey,
+		getUniforms: getUniforms,
+		acquireProgram: acquireProgram,
+		releaseProgram: releaseProgram,
+		releaseShaderCache: releaseShaderCache,
+		// Exposed for resource monitoring & error feedback via renderer.info:
+		programs: programs,
+		dispose: dispose
+	};
+
+}
+
+function WebGLProperties() {
+
+	let properties = new WeakMap();
+
+	function has( object ) {
+
+		return properties.has( object );
+
+	}
+
+	function get( object ) {
+
+		let map = properties.get( object );
+
+		if ( map === undefined ) {
+
+			map = {};
+			properties.set( object, map );
+
+		}
+
+		return map;
+
+	}
+
+	function remove( object ) {
+
+		properties.delete( object );
+
+	}
+
+	function update( object, key, value ) {
+
+		properties.get( object )[ key ] = value;
+
+	}
+
+	function dispose() {
+
+		properties = new WeakMap();
+
+	}
+
+	return {
+		has: has,
+		get: get,
+		remove: remove,
+		update: update,
+		dispose: dispose
+	};
+
+}
+
+function painterSortStable( a, b ) {
+
+	if ( a.groupOrder !== b.groupOrder ) {
+
+		return a.groupOrder - b.groupOrder;
+
+	} else if ( a.renderOrder !== b.renderOrder ) {
+
+		return a.renderOrder - b.renderOrder;
+
+	} else if ( a.material.id !== b.material.id ) {
+
+		return a.material.id - b.material.id;
+
+	} else if ( a.z !== b.z ) {
+
+		return a.z - b.z;
+
+	} else {
+
+		return a.id - b.id;
+
+	}
+
+}
+
+function reversePainterSortStable( a, b ) {
+
+	if ( a.groupOrder !== b.groupOrder ) {
+
+		return a.groupOrder - b.groupOrder;
+
+	} else if ( a.renderOrder !== b.renderOrder ) {
+
+		return a.renderOrder - b.renderOrder;
+
+	} else if ( a.z !== b.z ) {
+
+		return b.z - a.z;
+
+	} else {
+
+		return a.id - b.id;
+
+	}
+
+}
+
+
+function WebGLRenderList() {
+
+	const renderItems = [];
+	let renderItemsIndex = 0;
+
+	const opaque = [];
+	const transmissive = [];
+	const transparent = [];
+
+	function init() {
+
+		renderItemsIndex = 0;
+
+		opaque.length = 0;
+		transmissive.length = 0;
+		transparent.length = 0;
+
+	}
+
+	function getNextRenderItem( object, geometry, material, groupOrder, z, group ) {
+
+		let renderItem = renderItems[ renderItemsIndex ];
+
+		if ( renderItem === undefined ) {
+
+			renderItem = {
+				id: object.id,
+				object: object,
+				geometry: geometry,
+				material: material,
+				groupOrder: groupOrder,
+				renderOrder: object.renderOrder,
+				z: z,
+				group: group
+			};
+
+			renderItems[ renderItemsIndex ] = renderItem;
+
+		} else {
+
+			renderItem.id = object.id;
+			renderItem.object = object;
+			renderItem.geometry = geometry;
+			renderItem.material = material;
+			renderItem.groupOrder = groupOrder;
+			renderItem.renderOrder = object.renderOrder;
+			renderItem.z = z;
+			renderItem.group = group;
+
+		}
+
+		renderItemsIndex ++;
+
+		return renderItem;
+
+	}
+
+	function push( object, geometry, material, groupOrder, z, group ) {
+
+		const renderItem = getNextRenderItem( object, geometry, material, groupOrder, z, group );
+
+		if ( material.transmission > 0.0 ) {
+
+			transmissive.push( renderItem );
+
+		} else if ( material.transparent === true ) {
+
+			transparent.push( renderItem );
+
+		} else {
+
+			opaque.push( renderItem );
+
+		}
+
+	}
+
+	function unshift( object, geometry, material, groupOrder, z, group ) {
+
+		const renderItem = getNextRenderItem( object, geometry, material, groupOrder, z, group );
+
+		if ( material.transmission > 0.0 ) {
+
+			transmissive.unshift( renderItem );
+
+		} else if ( material.transparent === true ) {
+
+			transparent.unshift( renderItem );
+
+		} else {
+
+			opaque.unshift( renderItem );
+
+		}
+
+	}
+
+	function sort( customOpaqueSort, customTransparentSort ) {
+
+		if ( opaque.length > 1 ) opaque.sort( customOpaqueSort || painterSortStable );
+		if ( transmissive.length > 1 ) transmissive.sort( customTransparentSort || reversePainterSortStable );
+		if ( transparent.length > 1 ) transparent.sort( customTransparentSort || reversePainterSortStable );
+
+	}
+
+	function finish() {
+
+		// Clear references from inactive renderItems in the list
+
+		for ( let i = renderItemsIndex, il = renderItems.length; i < il; i ++ ) {
+
+			const renderItem = renderItems[ i ];
+
+			if ( renderItem.id === null ) break;
+
+			renderItem.id = null;
+			renderItem.object = null;
+			renderItem.geometry = null;
+			renderItem.material = null;
+			renderItem.group = null;
+
+		}
+
+	}
+
+	return {
+
+		opaque: opaque,
+		transmissive: transmissive,
+		transparent: transparent,
+
+		init: init,
+		push: push,
+		unshift: unshift,
+		finish: finish,
+
+		sort: sort
+	};
+
+}
+
+function WebGLRenderLists() {
+
+	let lists = new WeakMap();
+
+	function get( scene, renderCallDepth ) {
+
+		const listArray = lists.get( scene );
+		let list;
+
+		if ( listArray === undefined ) {
+
+			list = new WebGLRenderList();
+			lists.set( scene, [ list ] );
+
+		} else {
+
+			if ( renderCallDepth >= listArray.length ) {
+
+				list = new WebGLRenderList();
+				listArray.push( list );
+
+			} else {
+
+				list = listArray[ renderCallDepth ];
+
+			}
+
+		}
+
+		return list;
+
+	}
+
+	function dispose() {
+
+		lists = new WeakMap();
+
+	}
+
+	return {
+		get: get,
+		dispose: dispose
+	};
+
+}
+
+function UniformsCache() {
+
+	const lights = {};
+
+	return {
+
+		get: function ( light ) {
+
+			if ( lights[ light.id ] !== undefined ) {
+
+				return lights[ light.id ];
+
+			}
+
+			let uniforms;
+
+			switch ( light.type ) {
+
+				case 'DirectionalLight':
+					uniforms = {
+						direction: new Vector3(),
+						color: new Color()
+					};
+					break;
+
+				case 'SpotLight':
+					uniforms = {
+						position: new Vector3(),
+						direction: new Vector3(),
+						color: new Color(),
+						distance: 0,
+						coneCos: 0,
+						penumbraCos: 0,
+						decay: 0
+					};
+					break;
+
+				case 'PointLight':
+					uniforms = {
+						position: new Vector3(),
+						color: new Color(),
+						distance: 0,
+						decay: 0
+					};
+					break;
+
+				case 'HemisphereLight':
+					uniforms = {
+						direction: new Vector3(),
+						skyColor: new Color(),
+						groundColor: new Color()
+					};
+					break;
+
+				case 'RectAreaLight':
+					uniforms = {
+						color: new Color(),
+						position: new Vector3(),
+						halfWidth: new Vector3(),
+						halfHeight: new Vector3()
+					};
+					break;
+
+			}
+
+			lights[ light.id ] = uniforms;
+
+			return uniforms;
+
+		}
+
+	};
+
+}
+
+function ShadowUniformsCache() {
+
+	const lights = {};
+
+	return {
+
+		get: function ( light ) {
+
+			if ( lights[ light.id ] !== undefined ) {
+
+				return lights[ light.id ];
+
+			}
+
+			let uniforms;
+
+			switch ( light.type ) {
+
+				case 'DirectionalLight':
+					uniforms = {
+						shadowIntensity: 1,
+						shadowBias: 0,
+						shadowNormalBias: 0,
+						shadowRadius: 1,
+						shadowMapSize: new Vector2()
+					};
+					break;
+
+				case 'SpotLight':
+					uniforms = {
+						shadowIntensity: 1,
+						shadowBias: 0,
+						shadowNormalBias: 0,
+						shadowRadius: 1,
+						shadowMapSize: new Vector2()
+					};
+					break;
+
+				case 'PointLight':
+					uniforms = {
+						shadowIntensity: 1,
+						shadowBias: 0,
+						shadowNormalBias: 0,
+						shadowRadius: 1,
+						shadowMapSize: new Vector2(),
+						shadowCameraNear: 1,
+						shadowCameraFar: 1000
+					};
+					break;
+
+				// TODO (abelnation): set RectAreaLight shadow uniforms
+
+			}
+
+			lights[ light.id ] = uniforms;
+
+			return uniforms;
+
+		}
+
+	};
+
+}
+
+
+
+let nextVersion = 0;
+
+function shadowCastingAndTexturingLightsFirst( lightA, lightB ) {
+
+	return ( lightB.castShadow ? 2 : 0 ) - ( lightA.castShadow ? 2 : 0 ) + ( lightB.map ? 1 : 0 ) - ( lightA.map ? 1 : 0 );
+
+}
+
+function WebGLLights( extensions ) {
+
+	const cache = new UniformsCache();
+
+	const shadowCache = ShadowUniformsCache();
+
+	const state = {
+
+		version: 0,
+
+		hash: {
+			directionalLength: - 1,
+			pointLength: - 1,
+			spotLength: - 1,
+			rectAreaLength: - 1,
+			hemiLength: - 1,
+
+			numDirectionalShadows: - 1,
+			numPointShadows: - 1,
+			numSpotShadows: - 1,
+			numSpotMaps: - 1,
+
+			numLightProbes: - 1
+		},
+
+		ambient: [ 0, 0, 0 ],
+		probe: [],
+		directional: [],
+		directionalShadow: [],
+		directionalShadowMap: [],
+		directionalShadowMatrix: [],
+		spot: [],
+		spotLightMap: [],
+		spotShadow: [],
+		spotShadowMap: [],
+		spotLightMatrix: [],
+		rectArea: [],
+		rectAreaLTC1: null,
+		rectAreaLTC2: null,
+		point: [],
+		pointShadow: [],
+		pointShadowMap: [],
+		pointShadowMatrix: [],
+		hemi: [],
+		numSpotLightShadowsWithMaps: 0,
+		numLightProbes: 0
+
+	};
+
+	for ( let i = 0; i < 9; i ++ ) state.probe.push( new Vector3() );
+
+	const vector3 = new Vector3();
+	const matrix4 = new Matrix4();
+	const matrix42 = new Matrix4();
+
+	function setup( lights ) {
+
+		let r = 0, g = 0, b = 0;
+
+		for ( let i = 0; i < 9; i ++ ) state.probe[ i ].set( 0, 0, 0 );
+
+		let directionalLength = 0;
+		let pointLength = 0;
+		let spotLength = 0;
+		let rectAreaLength = 0;
+		let hemiLength = 0;
+
+		let numDirectionalShadows = 0;
+		let numPointShadows = 0;
+		let numSpotShadows = 0;
+		let numSpotMaps = 0;
+		let numSpotShadowsWithMaps = 0;
+
+		let numLightProbes = 0;
+
+		// ordering : [shadow casting + map texturing, map texturing, shadow casting, none ]
+		lights.sort( shadowCastingAndTexturingLightsFirst );
+
+		for ( let i = 0, l = lights.length; i < l; i ++ ) {
+
+			const light = lights[ i ];
+
+			const color = light.color;
+			const intensity = light.intensity;
+			const distance = light.distance;
+
+			const shadowMap = ( light.shadow && light.shadow.map ) ? light.shadow.map.texture : null;
+
+			if ( light.isAmbientLight ) {
+
+				r += color.r * intensity;
+				g += color.g * intensity;
+				b += color.b * intensity;
+
+			} else if ( light.isLightProbe ) {
+
+				for ( let j = 0; j < 9; j ++ ) {
+
+					state.probe[ j ].addScaledVector( light.sh.coefficients[ j ], intensity );
+
+				}
+
+				numLightProbes ++;
+
+			} else if ( light.isDirectionalLight ) {
+
+				const uniforms = cache.get( light );
+
+				uniforms.color.copy( light.color ).multiplyScalar( light.intensity );
+
+				if ( light.castShadow ) {
+
+					const shadow = light.shadow;
+
+					const shadowUniforms = shadowCache.get( light );
+
+					shadowUniforms.shadowIntensity = shadow.intensity;
+					shadowUniforms.shadowBias = shadow.bias;
+					shadowUniforms.shadowNormalBias = shadow.normalBias;
+					shadowUniforms.shadowRadius = shadow.radius;
+					shadowUniforms.shadowMapSize = shadow.mapSize;
+
+					state.directionalShadow[ directionalLength ] = shadowUniforms;
+					state.directionalShadowMap[ directionalLength ] = shadowMap;
+					state.directionalShadowMatrix[ directionalLength ] = light.shadow.matrix;
+
+					numDirectionalShadows ++;
+
+				}
+
+				state.directional[ directionalLength ] = uniforms;
+
+				directionalLength ++;
+
+			} else if ( light.isSpotLight ) {
+
+				const uniforms = cache.get( light );
+
+				uniforms.position.setFromMatrixPosition( light.matrixWorld );
+
+				uniforms.color.copy( color ).multiplyScalar( intensity );
+				uniforms.distance = distance;
+
+				uniforms.coneCos = Math.cos( light.angle );
+				uniforms.penumbraCos = Math.cos( light.angle * ( 1 - light.penumbra ) );
+				uniforms.decay = light.decay;
+
+				state.spot[ spotLength ] = uniforms;
+
+				const shadow = light.shadow;
+
+				if ( light.map ) {
+
+					state.spotLightMap[ numSpotMaps ] = light.map;
+					numSpotMaps ++;
+
+					// make sure the lightMatrix is up to date
+					// TODO : do it if required only
+					shadow.updateMatrices( light );
+
+					if ( light.castShadow ) numSpotShadowsWithMaps ++;
+
+				}
+
+				state.spotLightMatrix[ spotLength ] = shadow.matrix;
+
+				if ( light.castShadow ) {
+
+					const shadowUniforms = shadowCache.get( light );
+
+					shadowUniforms.shadowIntensity = shadow.intensity;
+					shadowUniforms.shadowBias = shadow.bias;
+					shadowUniforms.shadowNormalBias = shadow.normalBias;
+					shadowUniforms.shadowRadius = shadow.radius;
+					shadowUniforms.shadowMapSize = shadow.mapSize;
+
+					state.spotShadow[ spotLength ] = shadowUniforms;
+					state.spotShadowMap[ spotLength ] = shadowMap;
+
+					numSpotShadows ++;
+
+				}
+
+				spotLength ++;
+
+			} else if ( light.isRectAreaLight ) {
+
+				const uniforms = cache.get( light );
+
+				uniforms.color.copy( color ).multiplyScalar( intensity );
+
+				uniforms.halfWidth.set( light.width * 0.5, 0.0, 0.0 );
+				uniforms.halfHeight.set( 0.0, light.height * 0.5, 0.0 );
+
+				state.rectArea[ rectAreaLength ] = uniforms;
+
+				rectAreaLength ++;
+
+			} else if ( light.isPointLight ) {
+
+				const uniforms = cache.get( light );
+
+				uniforms.color.copy( light.color ).multiplyScalar( light.intensity );
+				uniforms.distance = light.distance;
+				uniforms.decay = light.decay;
+
+				if ( light.castShadow ) {
+
+					const shadow = light.shadow;
+
+					const shadowUniforms = shadowCache.get( light );
+
+					shadowUniforms.shadowIntensity = shadow.intensity;
+					shadowUniforms.shadowBias = shadow.bias;
+					shadowUniforms.shadowNormalBias = shadow.normalBias;
+					shadowUniforms.shadowRadius = shadow.radius;
+					shadowUniforms.shadowMapSize = shadow.mapSize;
+					shadowUniforms.shadowCameraNear = shadow.camera.near;
+					shadowUniforms.shadowCameraFar = shadow.camera.far;
+
+					state.pointShadow[ pointLength ] = shadowUniforms;
+					state.pointShadowMap[ pointLength ] = shadowMap;
+					state.pointShadowMatrix[ pointLength ] = light.shadow.matrix;
+
+					numPointShadows ++;
+
+				}
+
+				state.point[ pointLength ] = uniforms;
+
+				pointLength ++;
+
+			} else if ( light.isHemisphereLight ) {
+
+				const uniforms = cache.get( light );
+
+				uniforms.skyColor.copy( light.color ).multiplyScalar( intensity );
+				uniforms.groundColor.copy( light.groundColor ).multiplyScalar( intensity );
+
+				state.hemi[ hemiLength ] = uniforms;
+
+				hemiLength ++;
+
+			}
+
+		}
+
+		if ( rectAreaLength > 0 ) {
+
+			if ( extensions.has( 'OES_texture_float_linear' ) === true ) {
+
+				state.rectAreaLTC1 = UniformsLib.LTC_FLOAT_1;
+				state.rectAreaLTC2 = UniformsLib.LTC_FLOAT_2;
+
+			} else {
+
+				state.rectAreaLTC1 = UniformsLib.LTC_HALF_1;
+				state.rectAreaLTC2 = UniformsLib.LTC_HALF_2;
+
+			}
+
+		}
+
+		state.ambient[ 0 ] = r;
+		state.ambient[ 1 ] = g;
+		state.ambient[ 2 ] = b;
+
+		const hash = state.hash;
+
+		if ( hash.directionalLength !== directionalLength ||
+			hash.pointLength !== pointLength ||
+			hash.spotLength !== spotLength ||
+			hash.rectAreaLength !== rectAreaLength ||
+			hash.hemiLength !== hemiLength ||
+			hash.numDirectionalShadows !== numDirectionalShadows ||
+			hash.numPointShadows !== numPointShadows ||
+			hash.numSpotShadows !== numSpotShadows ||
+			hash.numSpotMaps !== numSpotMaps ||
+			hash.numLightProbes !== numLightProbes ) {
+
+			state.directional.length = directionalLength;
+			state.spot.length = spotLength;
+			state.rectArea.length = rectAreaLength;
+			state.point.length = pointLength;
+			state.hemi.length = hemiLength;
+
+			state.directionalShadow.length = numDirectionalShadows;
+			state.directionalShadowMap.length = numDirectionalShadows;
+			state.pointShadow.length = numPointShadows;
+			state.pointShadowMap.length = numPointShadows;
+			state.spotShadow.length = numSpotShadows;
+			state.spotShadowMap.length = numSpotShadows;
+			state.directionalShadowMatrix.length = numDirectionalShadows;
+			state.pointShadowMatrix.length = numPointShadows;
+			state.spotLightMatrix.length = numSpotShadows + numSpotMaps - numSpotShadowsWithMaps;
+			state.spotLightMap.length = numSpotMaps;
+			state.numSpotLightShadowsWithMaps = numSpotShadowsWithMaps;
+			state.numLightProbes = numLightProbes;
+
+			hash.directionalLength = directionalLength;
+			hash.pointLength = pointLength;
+			hash.spotLength = spotLength;
+			hash.rectAreaLength = rectAreaLength;
+			hash.hemiLength = hemiLength;
+
+			hash.numDirectionalShadows = numDirectionalShadows;
+			hash.numPointShadows = numPointShadows;
+			hash.numSpotShadows = numSpotShadows;
+			hash.numSpotMaps = numSpotMaps;
+
+			hash.numLightProbes = numLightProbes;
+
+			state.version = nextVersion ++;
+
+		}
+
+	}
+
+	function setupView( lights, camera ) {
+
+		let directionalLength = 0;
+		let pointLength = 0;
+		let spotLength = 0;
+		let rectAreaLength = 0;
+		let hemiLength = 0;
+
+		const viewMatrix = camera.matrixWorldInverse;
+
+		for ( let i = 0, l = lights.length; i < l; i ++ ) {
+
+			const light = lights[ i ];
+
+			if ( light.isDirectionalLight ) {
+
+				const uniforms = state.directional[ directionalLength ];
+
+				uniforms.direction.setFromMatrixPosition( light.matrixWorld );
+				vector3.setFromMatrixPosition( light.target.matrixWorld );
+				uniforms.direction.sub( vector3 );
+				uniforms.direction.transformDirection( viewMatrix );
+
+				directionalLength ++;
+
+			} else if ( light.isSpotLight ) {
+
+				const uniforms = state.spot[ spotLength ];
+
+				uniforms.position.setFromMatrixPosition( light.matrixWorld );
+				uniforms.position.applyMatrix4( viewMatrix );
+
+				uniforms.direction.setFromMatrixPosition( light.matrixWorld );
+				vector3.setFromMatrixPosition( light.target.matrixWorld );
+				uniforms.direction.sub( vector3 );
+				uniforms.direction.transformDirection( viewMatrix );
+
+				spotLength ++;
+
+			} else if ( light.isRectAreaLight ) {
+
+				const uniforms = state.rectArea[ rectAreaLength ];
+
+				uniforms.position.setFromMatrixPosition( light.matrixWorld );
+				uniforms.position.applyMatrix4( viewMatrix );
+
+				// extract local rotation of light to derive width/height half vectors
+				matrix42.identity();
+				matrix4.copy( light.matrixWorld );
+				matrix4.premultiply( viewMatrix );
+				matrix42.extractRotation( matrix4 );
+
+				uniforms.halfWidth.set( light.width * 0.5, 0.0, 0.0 );
+				uniforms.halfHeight.set( 0.0, light.height * 0.5, 0.0 );
+
+				uniforms.halfWidth.applyMatrix4( matrix42 );
+				uniforms.halfHeight.applyMatrix4( matrix42 );
+
+				rectAreaLength ++;
+
+			} else if ( light.isPointLight ) {
+
+				const uniforms = state.point[ pointLength ];
+
+				uniforms.position.setFromMatrixPosition( light.matrixWorld );
+				uniforms.position.applyMatrix4( viewMatrix );
+
+				pointLength ++;
+
+			} else if ( light.isHemisphereLight ) {
+
+				const uniforms = state.hemi[ hemiLength ];
+
+				uniforms.direction.setFromMatrixPosition( light.matrixWorld );
+				uniforms.direction.transformDirection( viewMatrix );
+
+				hemiLength ++;
+
+			}
+
+		}
+
+	}
+
+	return {
+		setup: setup,
+		setupView: setupView,
+		state: state
+	};
+
+}
+
+function WebGLRenderState( extensions ) {
+
+	const lights = new WebGLLights( extensions );
+
+	const lightsArray = [];
+	const shadowsArray = [];
+
+	function init( camera ) {
+
+		state.camera = camera;
+
+		lightsArray.length = 0;
+		shadowsArray.length = 0;
+
+	}
+
+	function pushLight( light ) {
+
+		lightsArray.push( light );
+
+	}
+
+	function pushShadow( shadowLight ) {
+
+		shadowsArray.push( shadowLight );
+
+	}
+
+	function setupLights() {
+
+		lights.setup( lightsArray );
+
+	}
+
+	function setupLightsView( camera ) {
+
+		lights.setupView( lightsArray, camera );
+
+	}
+
+	const state = {
+		lightsArray: lightsArray,
+		shadowsArray: shadowsArray,
+
+		camera: null,
+
+		lights: lights,
+
+		transmissionRenderTarget: {}
+	};
+
+	return {
+		init: init,
+		state: state,
+		setupLights: setupLights,
+		setupLightsView: setupLightsView,
+
+		pushLight: pushLight,
+		pushShadow: pushShadow
+	};
+
+}
+
+function WebGLRenderStates( extensions ) {
+
+	let renderStates = new WeakMap();
+
+	function get( scene, renderCallDepth = 0 ) {
+
+		const renderStateArray = renderStates.get( scene );
+		let renderState;
+
+		if ( renderStateArray === undefined ) {
+
+			renderState = new WebGLRenderState( extensions );
+			renderStates.set( scene, [ renderState ] );
+
+		} else {
+
+			if ( renderCallDepth >= renderStateArray.length ) {
+
+				renderState = new WebGLRenderState( extensions );
+				renderStateArray.push( renderState );
+
+			} else {
+
+				renderState = renderStateArray[ renderCallDepth ];
+
+			}
+
+		}
+
+		return renderState;
+
+	}
+
+	function dispose() {
+
+		renderStates = new WeakMap();
+
+	}
+
+	return {
+		get: get,
+		dispose: dispose
+	};
+
+}
+
+class MeshDepthMaterial extends Material {
+
+	constructor( parameters ) {
+
+		super();
+
+		this.isMeshDepthMaterial = true;
+
+		this.type = 'MeshDepthMaterial';
+
+		this.depthPacking = BasicDepthPacking;
+
+		this.map = null;
+
+		this.alphaMap = null;
+
+		this.displacementMap = null;
+		this.displacementScale = 1;
+		this.displacementBias = 0;
+
+		this.wireframe = false;
+		this.wireframeLinewidth = 1;
+
+		this.setValues( parameters );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.depthPacking = source.depthPacking;
+
+		this.map = source.map;
+
+		this.alphaMap = source.alphaMap;
+
+		this.displacementMap = source.displacementMap;
+		this.displacementScale = source.displacementScale;
+		this.displacementBias = source.displacementBias;
+
+		this.wireframe = source.wireframe;
+		this.wireframeLinewidth = source.wireframeLinewidth;
+
+		return this;
+
+	}
+
+}
+
+class MeshDistanceMaterial extends Material {
+
+	constructor( parameters ) {
+
+		super();
+
+		this.isMeshDistanceMaterial = true;
+
+		this.type = 'MeshDistanceMaterial';
+
+		this.map = null;
+
+		this.alphaMap = null;
+
+		this.displacementMap = null;
+		this.displacementScale = 1;
+		this.displacementBias = 0;
+
+		this.setValues( parameters );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.map = source.map;
+
+		this.alphaMap = source.alphaMap;
+
+		this.displacementMap = source.displacementMap;
+		this.displacementScale = source.displacementScale;
+		this.displacementBias = source.displacementBias;
+
+		return this;
+
+	}
+
+}
+
+const vertex = "void main() {\n\tgl_Position = vec4( position, 1.0 );\n}";
+
+const fragment = "uniform sampler2D shadow_pass;\nuniform vec2 resolution;\nuniform float radius;\n#include <packing>\nvoid main() {\n\tconst float samples = float( VSM_SAMPLES );\n\tfloat mean = 0.0;\n\tfloat squared_mean = 0.0;\n\tfloat uvStride = samples <= 1.0 ? 0.0 : 2.0 / ( samples - 1.0 );\n\tfloat uvStart = samples <= 1.0 ? 0.0 : - 1.0;\n\tfor ( float i = 0.0; i < samples; i ++ ) {\n\t\tfloat uvOffset = uvStart + i * uvStride;\n\t\t#ifdef HORIZONTAL_PASS\n\t\t\tvec2 distribution = unpackRGBATo2Half( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( uvOffset, 0.0 ) * radius ) / resolution ) );\n\t\t\tmean += distribution.x;\n\t\t\tsquared_mean += distribution.y * distribution.y + distribution.x * distribution.x;\n\t\t#else\n\t\t\tfloat depth = unpackRGBAToDepth( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( 0.0, uvOffset ) * radius ) / resolution ) );\n\t\t\tmean += depth;\n\t\t\tsquared_mean += depth * depth;\n\t\t#endif\n\t}\n\tmean = mean / samples;\n\tsquared_mean = squared_mean / samples;\n\tfloat std_dev = sqrt( squared_mean - mean * mean );\n\tgl_FragColor = pack2HalfToRGBA( vec2( mean, std_dev ) );\n}";
+
+function WebGLShadowMap( renderer, objects, capabilities ) {
+
+	let _frustum = new Frustum();
+
+	const _shadowMapSize = new Vector2(),
+		_viewportSize = new Vector2(),
+
+		_viewport = new Vector4(),
+
+		_depthMaterial = new MeshDepthMaterial( { depthPacking: RGBADepthPacking } ),
+		_distanceMaterial = new MeshDistanceMaterial(),
+
+		_materialCache = {},
+
+		_maxTextureSize = capabilities.maxTextureSize;
+
+	const shadowSide = { [ FrontSide ]: BackSide, [ BackSide ]: FrontSide, [ DoubleSide ]: DoubleSide };
+
+	const shadowMaterialVertical = new ShaderMaterial( {
+		defines: {
+			VSM_SAMPLES: 8
+		},
+		uniforms: {
+			shadow_pass: { value: null },
+			resolution: { value: new Vector2() },
+			radius: { value: 4.0 }
+		},
+
+		vertexShader: vertex,
+		fragmentShader: fragment
+
+	} );
+
+	const shadowMaterialHorizontal = shadowMaterialVertical.clone();
+	shadowMaterialHorizontal.defines.HORIZONTAL_PASS = 1;
+
+	const fullScreenTri = new BufferGeometry();
+	fullScreenTri.setAttribute(
+		'position',
+		new BufferAttribute(
+			new Float32Array( [ - 1, - 1, 0.5, 3, - 1, 0.5, - 1, 3, 0.5 ] ),
+			3
+		)
+	);
+
+	const fullScreenMesh = new Mesh( fullScreenTri, shadowMaterialVertical );
+
+	const scope = this;
+
+	this.enabled = false;
+
+	this.autoUpdate = true;
+	this.needsUpdate = false;
+
+	this.type = PCFShadowMap;
+	let _previousType = this.type;
+
+	this.render = function ( lights, scene, camera ) {
+
+		if ( scope.enabled === false ) return;
+		if ( scope.autoUpdate === false && scope.needsUpdate === false ) return;
+
+		if ( lights.length === 0 ) return;
+
+		const currentRenderTarget = renderer.getRenderTarget();
+		const activeCubeFace = renderer.getActiveCubeFace();
+		const activeMipmapLevel = renderer.getActiveMipmapLevel();
+
+		const _state = renderer.state;
+
+		// Set GL state for depth map.
+		_state.setBlending( NoBlending );
+		_state.buffers.color.setClear( 1, 1, 1, 1 );
+		_state.buffers.depth.setTest( true );
+		_state.setScissorTest( false );
+
+		// check for shadow map type changes
+
+		const toVSM = ( _previousType !== VSMShadowMap && this.type === VSMShadowMap );
+		const fromVSM = ( _previousType === VSMShadowMap && this.type !== VSMShadowMap );
+
+		// render depth map
+
+		for ( let i = 0, il = lights.length; i < il; i ++ ) {
+
+			const light = lights[ i ];
+			const shadow = light.shadow;
+
+			if ( shadow === undefined ) {
+
+				console.warn( 'THREE.WebGLShadowMap:', light, 'has no shadow.' );
+				continue;
+
+			}
+
+			if ( shadow.autoUpdate === false && shadow.needsUpdate === false ) continue;
+
+			_shadowMapSize.copy( shadow.mapSize );
+
+			const shadowFrameExtents = shadow.getFrameExtents();
+
+			_shadowMapSize.multiply( shadowFrameExtents );
+
+			_viewportSize.copy( shadow.mapSize );
+
+			if ( _shadowMapSize.x > _maxTextureSize || _shadowMapSize.y > _maxTextureSize ) {
+
+				if ( _shadowMapSize.x > _maxTextureSize ) {
+
+					_viewportSize.x = Math.floor( _maxTextureSize / shadowFrameExtents.x );
+					_shadowMapSize.x = _viewportSize.x * shadowFrameExtents.x;
+					shadow.mapSize.x = _viewportSize.x;
+
+				}
+
+				if ( _shadowMapSize.y > _maxTextureSize ) {
+
+					_viewportSize.y = Math.floor( _maxTextureSize / shadowFrameExtents.y );
+					_shadowMapSize.y = _viewportSize.y * shadowFrameExtents.y;
+					shadow.mapSize.y = _viewportSize.y;
+
+				}
+
+			}
+
+			if ( shadow.map === null || toVSM === true || fromVSM === true ) {
+
+				const pars = ( this.type !== VSMShadowMap ) ? { minFilter: NearestFilter, magFilter: NearestFilter } : {};
+
+				if ( shadow.map !== null ) {
+
+					shadow.map.dispose();
+
+				}
+
+				shadow.map = new WebGLRenderTarget( _shadowMapSize.x, _shadowMapSize.y, pars );
+				shadow.map.texture.name = light.name + '.shadowMap';
+
+				shadow.camera.updateProjectionMatrix();
+
+			}
+
+			renderer.setRenderTarget( shadow.map );
+			renderer.clear();
+
+			const viewportCount = shadow.getViewportCount();
+
+			for ( let vp = 0; vp < viewportCount; vp ++ ) {
+
+				const viewport = shadow.getViewport( vp );
+
+				_viewport.set(
+					_viewportSize.x * viewport.x,
+					_viewportSize.y * viewport.y,
+					_viewportSize.x * viewport.z,
+					_viewportSize.y * viewport.w
+				);
+
+				_state.viewport( _viewport );
+
+				shadow.updateMatrices( light, vp );
+
+				_frustum = shadow.getFrustum();
+
+				renderObject( scene, camera, shadow.camera, light, this.type );
+
+			}
+
+			// do blur pass for VSM
+
+			if ( shadow.isPointLightShadow !== true && this.type === VSMShadowMap ) {
+
+				VSMPass( shadow, camera );
+
+			}
+
+			shadow.needsUpdate = false;
+
+		}
+
+		_previousType = this.type;
+
+		scope.needsUpdate = false;
+
+		renderer.setRenderTarget( currentRenderTarget, activeCubeFace, activeMipmapLevel );
+
+	};
+
+	function VSMPass( shadow, camera ) {
+
+		const geometry = objects.update( fullScreenMesh );
+
+		if ( shadowMaterialVertical.defines.VSM_SAMPLES !== shadow.blurSamples ) {
+
+			shadowMaterialVertical.defines.VSM_SAMPLES = shadow.blurSamples;
+			shadowMaterialHorizontal.defines.VSM_SAMPLES = shadow.blurSamples;
+
+			shadowMaterialVertical.needsUpdate = true;
+			shadowMaterialHorizontal.needsUpdate = true;
+
+		}
+
+		if ( shadow.mapPass === null ) {
+
+			shadow.mapPass = new WebGLRenderTarget( _shadowMapSize.x, _shadowMapSize.y );
+
+		}
+
+		// vertical pass
+
+		shadowMaterialVertical.uniforms.shadow_pass.value = shadow.map.texture;
+		shadowMaterialVertical.uniforms.resolution.value = shadow.mapSize;
+		shadowMaterialVertical.uniforms.radius.value = shadow.radius;
+		renderer.setRenderTarget( shadow.mapPass );
+		renderer.clear();
+		renderer.renderBufferDirect( camera, null, geometry, shadowMaterialVertical, fullScreenMesh, null );
+
+		// horizontal pass
+
+		shadowMaterialHorizontal.uniforms.shadow_pass.value = shadow.mapPass.texture;
+		shadowMaterialHorizontal.uniforms.resolution.value = shadow.mapSize;
+		shadowMaterialHorizontal.uniforms.radius.value = shadow.radius;
+		renderer.setRenderTarget( shadow.map );
+		renderer.clear();
+		renderer.renderBufferDirect( camera, null, geometry, shadowMaterialHorizontal, fullScreenMesh, null );
+
+	}
+
+	function getDepthMaterial( object, material, light, type ) {
+
+		let result = null;
+
+		const customMaterial = ( light.isPointLight === true ) ? object.customDistanceMaterial : object.customDepthMaterial;
+
+		if ( customMaterial !== undefined ) {
+
+			result = customMaterial;
+
+		} else {
+
+			result = ( light.isPointLight === true ) ? _distanceMaterial : _depthMaterial;
+
+			if ( ( renderer.localClippingEnabled && material.clipShadows === true && Array.isArray( material.clippingPlanes ) && material.clippingPlanes.length !== 0 ) ||
+				( material.displacementMap && material.displacementScale !== 0 ) ||
+				( material.alphaMap && material.alphaTest > 0 ) ||
+				( material.map && material.alphaTest > 0 ) ) {
+
+				// in this case we need a unique material instance reflecting the
+				// appropriate state
+
+				const keyA = result.uuid, keyB = material.uuid;
+
+				let materialsForVariant = _materialCache[ keyA ];
+
+				if ( materialsForVariant === undefined ) {
+
+					materialsForVariant = {};
+					_materialCache[ keyA ] = materialsForVariant;
+
+				}
+
+				let cachedMaterial = materialsForVariant[ keyB ];
+
+				if ( cachedMaterial === undefined ) {
+
+					cachedMaterial = result.clone();
+					materialsForVariant[ keyB ] = cachedMaterial;
+					material.addEventListener( 'dispose', onMaterialDispose );
+
+				}
+
+				result = cachedMaterial;
+
+			}
+
+		}
+
+		result.visible = material.visible;
+		result.wireframe = material.wireframe;
+
+		if ( type === VSMShadowMap ) {
+
+			result.side = ( material.shadowSide !== null ) ? material.shadowSide : material.side;
+
+		} else {
+
+			result.side = ( material.shadowSide !== null ) ? material.shadowSide : shadowSide[ material.side ];
+
+		}
+
+		result.alphaMap = material.alphaMap;
+		result.alphaTest = material.alphaTest;
+		result.map = material.map;
+
+		result.clipShadows = material.clipShadows;
+		result.clippingPlanes = material.clippingPlanes;
+		result.clipIntersection = material.clipIntersection;
+
+		result.displacementMap = material.displacementMap;
+		result.displacementScale = material.displacementScale;
+		result.displacementBias = material.displacementBias;
+
+		result.wireframeLinewidth = material.wireframeLinewidth;
+		result.linewidth = material.linewidth;
+
+		if ( light.isPointLight === true && result.isMeshDistanceMaterial === true ) {
+
+			const materialProperties = renderer.properties.get( result );
+			materialProperties.light = light;
+
+		}
+
+		return result;
+
+	}
+
+	function renderObject( object, camera, shadowCamera, light, type ) {
+
+		if ( object.visible === false ) return;
+
+		const visible = object.layers.test( camera.layers );
+
+		if ( visible && ( object.isMesh || object.isLine || object.isPoints ) ) {
+
+			if ( ( object.castShadow || ( object.receiveShadow && type === VSMShadowMap ) ) && ( ! object.frustumCulled || _frustum.intersectsObject( object ) ) ) {
+
+				object.modelViewMatrix.multiplyMatrices( shadowCamera.matrixWorldInverse, object.matrixWorld );
+
+				const geometry = objects.update( object );
+				const material = object.material;
+
+				if ( Array.isArray( material ) ) {
+
+					const groups = geometry.groups;
+
+					for ( let k = 0, kl = groups.length; k < kl; k ++ ) {
+
+						const group = groups[ k ];
+						const groupMaterial = material[ group.materialIndex ];
+
+						if ( groupMaterial && groupMaterial.visible ) {
+
+							const depthMaterial = getDepthMaterial( object, groupMaterial, light, type );
+
+							object.onBeforeShadow( renderer, object, camera, shadowCamera, geometry, depthMaterial, group );
+
+							renderer.renderBufferDirect( shadowCamera, null, geometry, depthMaterial, object, group );
+
+							object.onAfterShadow( renderer, object, camera, shadowCamera, geometry, depthMaterial, group );
+
+						}
+
+					}
+
+				} else if ( material.visible ) {
+
+					const depthMaterial = getDepthMaterial( object, material, light, type );
+
+					object.onBeforeShadow( renderer, object, camera, shadowCamera, geometry, depthMaterial, null );
+
+					renderer.renderBufferDirect( shadowCamera, null, geometry, depthMaterial, object, null );
+
+					object.onAfterShadow( renderer, object, camera, shadowCamera, geometry, depthMaterial, null );
+
+				}
+
+			}
+
+		}
+
+		const children = object.children;
+
+		for ( let i = 0, l = children.length; i < l; i ++ ) {
+
+			renderObject( children[ i ], camera, shadowCamera, light, type );
+
+		}
+
+	}
+
+	function onMaterialDispose( event ) {
+
+		const material = event.target;
+
+		material.removeEventListener( 'dispose', onMaterialDispose );
+
+		// make sure to remove the unique distance/depth materials used for shadow map rendering
+
+		for ( const id in _materialCache ) {
+
+			const cache = _materialCache[ id ];
+
+			const uuid = event.target.uuid;
+
+			if ( uuid in cache ) {
+
+				const shadowMaterial = cache[ uuid ];
+				shadowMaterial.dispose();
+				delete cache[ uuid ];
+
+			}
+
+		}
+
+	}
+
+}
+
+const reversedFuncs = {
+	[ NeverDepth ]: AlwaysDepth,
+	[ LessDepth ]: GreaterDepth,
+	[ EqualDepth ]: NotEqualDepth,
+	[ LessEqualDepth ]: GreaterEqualDepth,
+
+	[ AlwaysDepth ]: NeverDepth,
+	[ GreaterDepth ]: LessDepth,
+	[ NotEqualDepth ]: EqualDepth,
+	[ GreaterEqualDepth ]: LessEqualDepth,
+};
+
+function WebGLState( gl ) {
+
+	function ColorBuffer() {
+
+		let locked = false;
+
+		const color = new Vector4();
+		let currentColorMask = null;
+		const currentColorClear = new Vector4( 0, 0, 0, 0 );
+
+		return {
+
+			setMask: function ( colorMask ) {
+
+				if ( currentColorMask !== colorMask && ! locked ) {
+
+					gl.colorMask( colorMask, colorMask, colorMask, colorMask );
+					currentColorMask = colorMask;
+
+				}
+
+			},
+
+			setLocked: function ( lock ) {
+
+				locked = lock;
+
+			},
+
+			setClear: function ( r, g, b, a, premultipliedAlpha ) {
+
+				if ( premultipliedAlpha === true ) {
+
+					r *= a; g *= a; b *= a;
+
+				}
+
+				color.set( r, g, b, a );
+
+				if ( currentColorClear.equals( color ) === false ) {
+
+					gl.clearColor( r, g, b, a );
+					currentColorClear.copy( color );
+
+				}
+
+			},
+
+			reset: function () {
+
+				locked = false;
+
+				currentColorMask = null;
+				currentColorClear.set( - 1, 0, 0, 0 ); // set to invalid state
+
+			}
+
+		};
+
+	}
+
+	function DepthBuffer() {
+
+		let locked = false;
+		let reversed = false;
+
+		let currentDepthMask = null;
+		let currentDepthFunc = null;
+		let currentDepthClear = null;
+
+		return {
+
+			setReversed: function ( value ) {
+
+				reversed = value;
+
+			},
+
+			setTest: function ( depthTest ) {
+
+				if ( depthTest ) {
+
+					enable( gl.DEPTH_TEST );
+
+				} else {
+
+					disable( gl.DEPTH_TEST );
+
+				}
+
+			},
+
+			setMask: function ( depthMask ) {
+
+				if ( currentDepthMask !== depthMask && ! locked ) {
+
+					gl.depthMask( depthMask );
+					currentDepthMask = depthMask;
+
+				}
+
+			},
+
+			setFunc: function ( depthFunc ) {
+
+				if ( reversed ) depthFunc = reversedFuncs[ depthFunc ];
+
+				if ( currentDepthFunc !== depthFunc ) {
+
+					switch ( depthFunc ) {
+
+						case NeverDepth:
+
+							gl.depthFunc( gl.NEVER );
+							break;
+
+						case AlwaysDepth:
+
+							gl.depthFunc( gl.ALWAYS );
+							break;
+
+						case LessDepth:
+
+							gl.depthFunc( gl.LESS );
+							break;
+
+						case LessEqualDepth:
+
+							gl.depthFunc( gl.LEQUAL );
+							break;
+
+						case EqualDepth:
+
+							gl.depthFunc( gl.EQUAL );
+							break;
+
+						case GreaterEqualDepth:
+
+							gl.depthFunc( gl.GEQUAL );
+							break;
+
+						case GreaterDepth:
+
+							gl.depthFunc( gl.GREATER );
+							break;
+
+						case NotEqualDepth:
+
+							gl.depthFunc( gl.NOTEQUAL );
+							break;
+
+						default:
+
+							gl.depthFunc( gl.LEQUAL );
+
+					}
+
+					currentDepthFunc = depthFunc;
+
+				}
+
+			},
+
+			setLocked: function ( lock ) {
+
+				locked = lock;
+
+			},
+
+			setClear: function ( depth ) {
+
+				if ( currentDepthClear !== depth ) {
+
+					gl.clearDepth( depth );
+					currentDepthClear = depth;
+
+				}
+
+			},
+
+			reset: function () {
+
+				locked = false;
+
+				currentDepthMask = null;
+				currentDepthFunc = null;
+				currentDepthClear = null;
+
+			}
+
+		};
+
+	}
+
+	function StencilBuffer() {
+
+		let locked = false;
+
+		let currentStencilMask = null;
+		let currentStencilFunc = null;
+		let currentStencilRef = null;
+		let currentStencilFuncMask = null;
+		let currentStencilFail = null;
+		let currentStencilZFail = null;
+		let currentStencilZPass = null;
+		let currentStencilClear = null;
+
+		return {
+
+			setTest: function ( stencilTest ) {
+
+				if ( ! locked ) {
+
+					if ( stencilTest ) {
+
+						enable( gl.STENCIL_TEST );
+
+					} else {
+
+						disable( gl.STENCIL_TEST );
+
+					}
+
+				}
+
+			},
+
+			setMask: function ( stencilMask ) {
+
+				if ( currentStencilMask !== stencilMask && ! locked ) {
+
+					gl.stencilMask( stencilMask );
+					currentStencilMask = stencilMask;
+
+				}
+
+			},
+
+			setFunc: function ( stencilFunc, stencilRef, stencilMask ) {
+
+				if ( currentStencilFunc !== stencilFunc ||
+				     currentStencilRef !== stencilRef ||
+				     currentStencilFuncMask !== stencilMask ) {
+
+					gl.stencilFunc( stencilFunc, stencilRef, stencilMask );
+
+					currentStencilFunc = stencilFunc;
+					currentStencilRef = stencilRef;
+					currentStencilFuncMask = stencilMask;
+
+				}
+
+			},
+
+			setOp: function ( stencilFail, stencilZFail, stencilZPass ) {
+
+				if ( currentStencilFail !== stencilFail ||
+				     currentStencilZFail !== stencilZFail ||
+				     currentStencilZPass !== stencilZPass ) {
+
+					gl.stencilOp( stencilFail, stencilZFail, stencilZPass );
+
+					currentStencilFail = stencilFail;
+					currentStencilZFail = stencilZFail;
+					currentStencilZPass = stencilZPass;
+
+				}
+
+			},
+
+			setLocked: function ( lock ) {
+
+				locked = lock;
+
+			},
+
+			setClear: function ( stencil ) {
+
+				if ( currentStencilClear !== stencil ) {
+
+					gl.clearStencil( stencil );
+					currentStencilClear = stencil;
+
+				}
+
+			},
+
+			reset: function () {
+
+				locked = false;
+
+				currentStencilMask = null;
+				currentStencilFunc = null;
+				currentStencilRef = null;
+				currentStencilFuncMask = null;
+				currentStencilFail = null;
+				currentStencilZFail = null;
+				currentStencilZPass = null;
+				currentStencilClear = null;
+
+			}
+
+		};
+
+	}
+
+	//
+
+	const colorBuffer = new ColorBuffer();
+	const depthBuffer = new DepthBuffer();
+	const stencilBuffer = new StencilBuffer();
+
+	const uboBindings = new WeakMap();
+	const uboProgramMap = new WeakMap();
+
+	let enabledCapabilities = {};
+
+	let currentBoundFramebuffers = {};
+	let currentDrawbuffers = new WeakMap();
+	let defaultDrawbuffers = [];
+
+	let currentProgram = null;
+
+	let currentBlendingEnabled = false;
+	let currentBlending = null;
+	let currentBlendEquation = null;
+	let currentBlendSrc = null;
+	let currentBlendDst = null;
+	let currentBlendEquationAlpha = null;
+	let currentBlendSrcAlpha = null;
+	let currentBlendDstAlpha = null;
+	let currentBlendColor = new Color( 0, 0, 0 );
+	let currentBlendAlpha = 0;
+	let currentPremultipledAlpha = false;
+
+	let currentFlipSided = null;
+	let currentCullFace = null;
+
+	let currentLineWidth = null;
+
+	let currentPolygonOffsetFactor = null;
+	let currentPolygonOffsetUnits = null;
+
+	const maxTextures = gl.getParameter( gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS );
+
+	let lineWidthAvailable = false;
+	let version = 0;
+	const glVersion = gl.getParameter( gl.VERSION );
+
+	if ( glVersion.indexOf( 'WebGL' ) !== - 1 ) {
+
+		version = parseFloat( /^WebGL (\d)/.exec( glVersion )[ 1 ] );
+		lineWidthAvailable = ( version >= 1.0 );
+
+	} else if ( glVersion.indexOf( 'OpenGL ES' ) !== - 1 ) {
+
+		version = parseFloat( /^OpenGL ES (\d)/.exec( glVersion )[ 1 ] );
+		lineWidthAvailable = ( version >= 2.0 );
+
+	}
+
+	let currentTextureSlot = null;
+	let currentBoundTextures = {};
+
+	const scissorParam = gl.getParameter( gl.SCISSOR_BOX );
+	const viewportParam = gl.getParameter( gl.VIEWPORT );
+
+	const currentScissor = new Vector4().fromArray( scissorParam );
+	const currentViewport = new Vector4().fromArray( viewportParam );
+
+	function createTexture( type, target, count, dimensions ) {
+
+		const data = new Uint8Array( 4 ); // 4 is required to match default unpack alignment of 4.
+		const texture = gl.createTexture();
+
+		gl.bindTexture( type, texture );
+		gl.texParameteri( type, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+		gl.texParameteri( type, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+
+		for ( let i = 0; i < count; i ++ ) {
+
+			if ( type === gl.TEXTURE_3D || type === gl.TEXTURE_2D_ARRAY ) {
+
+				gl.texImage3D( target, 0, gl.RGBA, 1, 1, dimensions, 0, gl.RGBA, gl.UNSIGNED_BYTE, data );
+
+			} else {
+
+				gl.texImage2D( target + i, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data );
+
+			}
+
+		}
+
+		return texture;
+
+	}
+
+	const emptyTextures = {};
+	emptyTextures[ gl.TEXTURE_2D ] = createTexture( gl.TEXTURE_2D, gl.TEXTURE_2D, 1 );
+	emptyTextures[ gl.TEXTURE_CUBE_MAP ] = createTexture( gl.TEXTURE_CUBE_MAP, gl.TEXTURE_CUBE_MAP_POSITIVE_X, 6 );
+	emptyTextures[ gl.TEXTURE_2D_ARRAY ] = createTexture( gl.TEXTURE_2D_ARRAY, gl.TEXTURE_2D_ARRAY, 1, 1 );
+	emptyTextures[ gl.TEXTURE_3D ] = createTexture( gl.TEXTURE_3D, gl.TEXTURE_3D, 1, 1 );
+
+	// init
+
+	colorBuffer.setClear( 0, 0, 0, 1 );
+	depthBuffer.setClear( 1 );
+	stencilBuffer.setClear( 0 );
+
+	enable( gl.DEPTH_TEST );
+	depthBuffer.setFunc( LessEqualDepth );
+
+	setFlipSided( false );
+	setCullFace( CullFaceBack );
+	enable( gl.CULL_FACE );
+
+	setBlending( NoBlending );
+
+	//
+
+	function enable( id ) {
+
+		if ( enabledCapabilities[ id ] !== true ) {
+
+			gl.enable( id );
+			enabledCapabilities[ id ] = true;
+
+		}
+
+	}
+
+	function disable( id ) {
+
+		if ( enabledCapabilities[ id ] !== false ) {
+
+			gl.disable( id );
+			enabledCapabilities[ id ] = false;
+
+		}
+
+	}
+
+	function bindFramebuffer( target, framebuffer ) {
+
+		if ( currentBoundFramebuffers[ target ] !== framebuffer ) {
+
+			gl.bindFramebuffer( target, framebuffer );
+
+			currentBoundFramebuffers[ target ] = framebuffer;
+
+			// gl.DRAW_FRAMEBUFFER is equivalent to gl.FRAMEBUFFER
+
+			if ( target === gl.DRAW_FRAMEBUFFER ) {
+
+				currentBoundFramebuffers[ gl.FRAMEBUFFER ] = framebuffer;
+
+			}
+
+			if ( target === gl.FRAMEBUFFER ) {
+
+				currentBoundFramebuffers[ gl.DRAW_FRAMEBUFFER ] = framebuffer;
+
+			}
+
+			return true;
+
+		}
+
+		return false;
+
+	}
+
+	function drawBuffers( renderTarget, framebuffer ) {
+
+		let drawBuffers = defaultDrawbuffers;
+
+		let needsUpdate = false;
+
+		if ( renderTarget ) {
+
+			drawBuffers = currentDrawbuffers.get( framebuffer );
+
+			if ( drawBuffers === undefined ) {
+
+				drawBuffers = [];
+				currentDrawbuffers.set( framebuffer, drawBuffers );
+
+			}
+
+			const textures = renderTarget.textures;
+
+			if ( drawBuffers.length !== textures.length || drawBuffers[ 0 ] !== gl.COLOR_ATTACHMENT0 ) {
+
+				for ( let i = 0, il = textures.length; i < il; i ++ ) {
+
+					drawBuffers[ i ] = gl.COLOR_ATTACHMENT0 + i;
+
+				}
+
+				drawBuffers.length = textures.length;
+
+				needsUpdate = true;
+
+			}
+
+		} else {
+
+			if ( drawBuffers[ 0 ] !== gl.BACK ) {
+
+				drawBuffers[ 0 ] = gl.BACK;
+
+				needsUpdate = true;
+
+			}
+
+		}
+
+		if ( needsUpdate ) {
+
+			gl.drawBuffers( drawBuffers );
+
+		}
+
+	}
+
+	function useProgram( program ) {
+
+		if ( currentProgram !== program ) {
+
+			gl.useProgram( program );
+
+			currentProgram = program;
+
+			return true;
+
+		}
+
+		return false;
+
+	}
+
+	const equationToGL = {
+		[ AddEquation ]: gl.FUNC_ADD,
+		[ SubtractEquation ]: gl.FUNC_SUBTRACT,
+		[ ReverseSubtractEquation ]: gl.FUNC_REVERSE_SUBTRACT
+	};
+
+	equationToGL[ MinEquation ] = gl.MIN;
+	equationToGL[ MaxEquation ] = gl.MAX;
+
+	const factorToGL = {
+		[ ZeroFactor ]: gl.ZERO,
+		[ OneFactor ]: gl.ONE,
+		[ SrcColorFactor ]: gl.SRC_COLOR,
+		[ SrcAlphaFactor ]: gl.SRC_ALPHA,
+		[ SrcAlphaSaturateFactor ]: gl.SRC_ALPHA_SATURATE,
+		[ DstColorFactor ]: gl.DST_COLOR,
+		[ DstAlphaFactor ]: gl.DST_ALPHA,
+		[ OneMinusSrcColorFactor ]: gl.ONE_MINUS_SRC_COLOR,
+		[ OneMinusSrcAlphaFactor ]: gl.ONE_MINUS_SRC_ALPHA,
+		[ OneMinusDstColorFactor ]: gl.ONE_MINUS_DST_COLOR,
+		[ OneMinusDstAlphaFactor ]: gl.ONE_MINUS_DST_ALPHA,
+		[ ConstantColorFactor ]: gl.CONSTANT_COLOR,
+		[ OneMinusConstantColorFactor ]: gl.ONE_MINUS_CONSTANT_COLOR,
+		[ ConstantAlphaFactor ]: gl.CONSTANT_ALPHA,
+		[ OneMinusConstantAlphaFactor ]: gl.ONE_MINUS_CONSTANT_ALPHA
+	};
+
+	function setBlending( blending, blendEquation, blendSrc, blendDst, blendEquationAlpha, blendSrcAlpha, blendDstAlpha, blendColor, blendAlpha, premultipliedAlpha ) {
+
+		if ( blending === NoBlending ) {
+
+			if ( currentBlendingEnabled === true ) {
+
+				disable( gl.BLEND );
+				currentBlendingEnabled = false;
+
+			}
+
+			return;
+
+		}
+
+		if ( currentBlendingEnabled === false ) {
+
+			enable( gl.BLEND );
+			currentBlendingEnabled = true;
+
+		}
+
+		if ( blending !== CustomBlending ) {
+
+			if ( blending !== currentBlending || premultipliedAlpha !== currentPremultipledAlpha ) {
+
+				if ( currentBlendEquation !== AddEquation || currentBlendEquationAlpha !== AddEquation ) {
+
+					gl.blendEquation( gl.FUNC_ADD );
+
+					currentBlendEquation = AddEquation;
+					currentBlendEquationAlpha = AddEquation;
+
+				}
+
+				if ( premultipliedAlpha ) {
+
+					switch ( blending ) {
+
+						case NormalBlending:
+							gl.blendFuncSeparate( gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA );
+							break;
+
+						case AdditiveBlending:
+							gl.blendFunc( gl.ONE, gl.ONE );
+							break;
+
+						case SubtractiveBlending:
+							gl.blendFuncSeparate( gl.ZERO, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE );
+							break;
+
+						case MultiplyBlending:
+							gl.blendFuncSeparate( gl.ZERO, gl.SRC_COLOR, gl.ZERO, gl.SRC_ALPHA );
+							break;
+
+						default:
+							console.error( 'THREE.WebGLState: Invalid blending: ', blending );
+							break;
+
+					}
+
+				} else {
+
+					switch ( blending ) {
+
+						case NormalBlending:
+							gl.blendFuncSeparate( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA );
+							break;
+
+						case AdditiveBlending:
+							gl.blendFunc( gl.SRC_ALPHA, gl.ONE );
+							break;
+
+						case SubtractiveBlending:
+							gl.blendFuncSeparate( gl.ZERO, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE );
+							break;
+
+						case MultiplyBlending:
+							gl.blendFunc( gl.ZERO, gl.SRC_COLOR );
+							break;
+
+						default:
+							console.error( 'THREE.WebGLState: Invalid blending: ', blending );
+							break;
+
+					}
+
+				}
+
+				currentBlendSrc = null;
+				currentBlendDst = null;
+				currentBlendSrcAlpha = null;
+				currentBlendDstAlpha = null;
+				currentBlendColor.set( 0, 0, 0 );
+				currentBlendAlpha = 0;
+
+				currentBlending = blending;
+				currentPremultipledAlpha = premultipliedAlpha;
+
+			}
+
+			return;
+
+		}
+
+		// custom blending
+
+		blendEquationAlpha = blendEquationAlpha || blendEquation;
+		blendSrcAlpha = blendSrcAlpha || blendSrc;
+		blendDstAlpha = blendDstAlpha || blendDst;
+
+		if ( blendEquation !== currentBlendEquation || blendEquationAlpha !== currentBlendEquationAlpha ) {
+
+			gl.blendEquationSeparate( equationToGL[ blendEquation ], equationToGL[ blendEquationAlpha ] );
+
+			currentBlendEquation = blendEquation;
+			currentBlendEquationAlpha = blendEquationAlpha;
+
+		}
+
+		if ( blendSrc !== currentBlendSrc || blendDst !== currentBlendDst || blendSrcAlpha !== currentBlendSrcAlpha || blendDstAlpha !== currentBlendDstAlpha ) {
+
+			gl.blendFuncSeparate( factorToGL[ blendSrc ], factorToGL[ blendDst ], factorToGL[ blendSrcAlpha ], factorToGL[ blendDstAlpha ] );
+
+			currentBlendSrc = blendSrc;
+			currentBlendDst = blendDst;
+			currentBlendSrcAlpha = blendSrcAlpha;
+			currentBlendDstAlpha = blendDstAlpha;
+
+		}
+
+		if ( blendColor.equals( currentBlendColor ) === false || blendAlpha !== currentBlendAlpha ) {
+
+			gl.blendColor( blendColor.r, blendColor.g, blendColor.b, blendAlpha );
+
+			currentBlendColor.copy( blendColor );
+			currentBlendAlpha = blendAlpha;
+
+		}
+
+		currentBlending = blending;
+		currentPremultipledAlpha = false;
+
+	}
+
+	function setMaterial( material, frontFaceCW ) {
+
+		material.side === DoubleSide
+			? disable( gl.CULL_FACE )
+			: enable( gl.CULL_FACE );
+
+		let flipSided = ( material.side === BackSide );
+		if ( frontFaceCW ) flipSided = ! flipSided;
+
+		setFlipSided( flipSided );
+
+		( material.blending === NormalBlending && material.transparent === false )
+			? setBlending( NoBlending )
+			: setBlending( material.blending, material.blendEquation, material.blendSrc, material.blendDst, material.blendEquationAlpha, material.blendSrcAlpha, material.blendDstAlpha, material.blendColor, material.blendAlpha, material.premultipliedAlpha );
+
+		depthBuffer.setFunc( material.depthFunc );
+		depthBuffer.setTest( material.depthTest );
+		depthBuffer.setMask( material.depthWrite );
+		colorBuffer.setMask( material.colorWrite );
+
+		const stencilWrite = material.stencilWrite;
+		stencilBuffer.setTest( stencilWrite );
+		if ( stencilWrite ) {
+
+			stencilBuffer.setMask( material.stencilWriteMask );
+			stencilBuffer.setFunc( material.stencilFunc, material.stencilRef, material.stencilFuncMask );
+			stencilBuffer.setOp( material.stencilFail, material.stencilZFail, material.stencilZPass );
+
+		}
+
+		setPolygonOffset( material.polygonOffset, material.polygonOffsetFactor, material.polygonOffsetUnits );
+
+		material.alphaToCoverage === true
+			? enable( gl.SAMPLE_ALPHA_TO_COVERAGE )
+			: disable( gl.SAMPLE_ALPHA_TO_COVERAGE );
+
+	}
+
+	//
+
+	function setFlipSided( flipSided ) {
+
+		if ( currentFlipSided !== flipSided ) {
+
+			if ( flipSided ) {
+
+				gl.frontFace( gl.CW );
+
+			} else {
+
+				gl.frontFace( gl.CCW );
+
+			}
+
+			currentFlipSided = flipSided;
+
+		}
+
+	}
+
+	function setCullFace( cullFace ) {
+
+		if ( cullFace !== CullFaceNone ) {
+
+			enable( gl.CULL_FACE );
+
+			if ( cullFace !== currentCullFace ) {
+
+				if ( cullFace === CullFaceBack ) {
+
+					gl.cullFace( gl.BACK );
+
+				} else if ( cullFace === CullFaceFront ) {
+
+					gl.cullFace( gl.FRONT );
+
+				} else {
+
+					gl.cullFace( gl.FRONT_AND_BACK );
+
+				}
+
+			}
+
+		} else {
+
+			disable( gl.CULL_FACE );
+
+		}
+
+		currentCullFace = cullFace;
+
+	}
+
+	function setLineWidth( width ) {
+
+		if ( width !== currentLineWidth ) {
+
+			if ( lineWidthAvailable ) gl.lineWidth( width );
+
+			currentLineWidth = width;
+
+		}
+
+	}
+
+	function setPolygonOffset( polygonOffset, factor, units ) {
+
+		if ( polygonOffset ) {
+
+			enable( gl.POLYGON_OFFSET_FILL );
+
+			if ( currentPolygonOffsetFactor !== factor || currentPolygonOffsetUnits !== units ) {
+
+				gl.polygonOffset( factor, units );
+
+				currentPolygonOffsetFactor = factor;
+				currentPolygonOffsetUnits = units;
+
+			}
+
+		} else {
+
+			disable( gl.POLYGON_OFFSET_FILL );
+
+		}
+
+	}
+
+	function setScissorTest( scissorTest ) {
+
+		if ( scissorTest ) {
+
+			enable( gl.SCISSOR_TEST );
+
+		} else {
+
+			disable( gl.SCISSOR_TEST );
+
+		}
+
+	}
+
+	// texture
+
+	function activeTexture( webglSlot ) {
+
+		if ( webglSlot === undefined ) webglSlot = gl.TEXTURE0 + maxTextures - 1;
+
+		if ( currentTextureSlot !== webglSlot ) {
+
+			gl.activeTexture( webglSlot );
+			currentTextureSlot = webglSlot;
+
+		}
+
+	}
+
+	function bindTexture( webglType, webglTexture, webglSlot ) {
+
+		if ( webglSlot === undefined ) {
+
+			if ( currentTextureSlot === null ) {
+
+				webglSlot = gl.TEXTURE0 + maxTextures - 1;
+
+			} else {
+
+				webglSlot = currentTextureSlot;
+
+			}
+
+		}
+
+		let boundTexture = currentBoundTextures[ webglSlot ];
+
+		if ( boundTexture === undefined ) {
+
+			boundTexture = { type: undefined, texture: undefined };
+			currentBoundTextures[ webglSlot ] = boundTexture;
+
+		}
+
+		if ( boundTexture.type !== webglType || boundTexture.texture !== webglTexture ) {
+
+			if ( currentTextureSlot !== webglSlot ) {
+
+				gl.activeTexture( webglSlot );
+				currentTextureSlot = webglSlot;
+
+			}
+
+			gl.bindTexture( webglType, webglTexture || emptyTextures[ webglType ] );
+
+			boundTexture.type = webglType;
+			boundTexture.texture = webglTexture;
+
+		}
+
+	}
+
+	function unbindTexture() {
+
+		const boundTexture = currentBoundTextures[ currentTextureSlot ];
+
+		if ( boundTexture !== undefined && boundTexture.type !== undefined ) {
+
+			gl.bindTexture( boundTexture.type, null );
+
+			boundTexture.type = undefined;
+			boundTexture.texture = undefined;
+
+		}
+
+	}
+
+	function compressedTexImage2D() {
+
+		try {
+
+			gl.compressedTexImage2D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function compressedTexImage3D() {
+
+		try {
+
+			gl.compressedTexImage3D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function texSubImage2D() {
+
+		try {
+
+			gl.texSubImage2D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function texSubImage3D() {
+
+		try {
+
+			gl.texSubImage3D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function compressedTexSubImage2D() {
+
+		try {
+
+			gl.compressedTexSubImage2D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function compressedTexSubImage3D() {
+
+		try {
+
+			gl.compressedTexSubImage3D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function texStorage2D() {
+
+		try {
+
+			gl.texStorage2D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function texStorage3D() {
+
+		try {
+
+			gl.texStorage3D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function texImage2D() {
+
+		try {
+
+			gl.texImage2D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	function texImage3D() {
+
+		try {
+
+			gl.texImage3D.apply( gl, arguments );
+
+		} catch ( error ) {
+
+			console.error( 'THREE.WebGLState:', error );
+
+		}
+
+	}
+
+	//
+
+	function scissor( scissor ) {
+
+		if ( currentScissor.equals( scissor ) === false ) {
+
+			gl.scissor( scissor.x, scissor.y, scissor.z, scissor.w );
+			currentScissor.copy( scissor );
+
+		}
+
+	}
+
+	function viewport( viewport ) {
+
+		if ( currentViewport.equals( viewport ) === false ) {
+
+			gl.viewport( viewport.x, viewport.y, viewport.z, viewport.w );
+			currentViewport.copy( viewport );
+
+		}
+
+	}
+
+	function updateUBOMapping( uniformsGroup, program ) {
+
+		let mapping = uboProgramMap.get( program );
+
+		if ( mapping === undefined ) {
+
+			mapping = new WeakMap();
+
+			uboProgramMap.set( program, mapping );
+
+		}
+
+		let blockIndex = mapping.get( uniformsGroup );
+
+		if ( blockIndex === undefined ) {
+
+			blockIndex = gl.getUniformBlockIndex( program, uniformsGroup.name );
+
+			mapping.set( uniformsGroup, blockIndex );
+
+		}
+
+	}
+
+	function uniformBlockBinding( uniformsGroup, program ) {
+
+		const mapping = uboProgramMap.get( program );
+		const blockIndex = mapping.get( uniformsGroup );
+
+		if ( uboBindings.get( program ) !== blockIndex ) {
+
+			// bind shader specific block index to global block point
+			gl.uniformBlockBinding( program, blockIndex, uniformsGroup.__bindingPointIndex );
+
+			uboBindings.set( program, blockIndex );
+
+		}
+
+	}
+
+	//
+
+	function reset() {
+
+		// reset state
+
+		gl.disable( gl.BLEND );
+		gl.disable( gl.CULL_FACE );
+		gl.disable( gl.DEPTH_TEST );
+		gl.disable( gl.POLYGON_OFFSET_FILL );
+		gl.disable( gl.SCISSOR_TEST );
+		gl.disable( gl.STENCIL_TEST );
+		gl.disable( gl.SAMPLE_ALPHA_TO_COVERAGE );
+
+		gl.blendEquation( gl.FUNC_ADD );
+		gl.blendFunc( gl.ONE, gl.ZERO );
+		gl.blendFuncSeparate( gl.ONE, gl.ZERO, gl.ONE, gl.ZERO );
+		gl.blendColor( 0, 0, 0, 0 );
+
+		gl.colorMask( true, true, true, true );
+		gl.clearColor( 0, 0, 0, 0 );
+
+		gl.depthMask( true );
+		gl.depthFunc( gl.LESS );
+		gl.clearDepth( 1 );
+
+		gl.stencilMask( 0xffffffff );
+		gl.stencilFunc( gl.ALWAYS, 0, 0xffffffff );
+		gl.stencilOp( gl.KEEP, gl.KEEP, gl.KEEP );
+		gl.clearStencil( 0 );
+
+		gl.cullFace( gl.BACK );
+		gl.frontFace( gl.CCW );
+
+		gl.polygonOffset( 0, 0 );
+
+		gl.activeTexture( gl.TEXTURE0 );
+
+		gl.bindFramebuffer( gl.FRAMEBUFFER, null );
+		gl.bindFramebuffer( gl.DRAW_FRAMEBUFFER, null );
+		gl.bindFramebuffer( gl.READ_FRAMEBUFFER, null );
+
+		gl.useProgram( null );
+
+		gl.lineWidth( 1 );
+
+		gl.scissor( 0, 0, gl.canvas.width, gl.canvas.height );
+		gl.viewport( 0, 0, gl.canvas.width, gl.canvas.height );
+
+		// reset internals
+
+		enabledCapabilities = {};
+
+		currentTextureSlot = null;
+		currentBoundTextures = {};
+
+		currentBoundFramebuffers = {};
+		currentDrawbuffers = new WeakMap();
+		defaultDrawbuffers = [];
+
+		currentProgram = null;
+
+		currentBlendingEnabled = false;
+		currentBlending = null;
+		currentBlendEquation = null;
+		currentBlendSrc = null;
+		currentBlendDst = null;
+		currentBlendEquationAlpha = null;
+		currentBlendSrcAlpha = null;
+		currentBlendDstAlpha = null;
+		currentBlendColor = new Color( 0, 0, 0 );
+		currentBlendAlpha = 0;
+		currentPremultipledAlpha = false;
+
+		currentFlipSided = null;
+		currentCullFace = null;
+
+		currentLineWidth = null;
+
+		currentPolygonOffsetFactor = null;
+		currentPolygonOffsetUnits = null;
+
+		currentScissor.set( 0, 0, gl.canvas.width, gl.canvas.height );
+		currentViewport.set( 0, 0, gl.canvas.width, gl.canvas.height );
+
+		colorBuffer.reset();
+		depthBuffer.reset();
+		stencilBuffer.reset();
+
+	}
+
+	return {
+
+		buffers: {
+			color: colorBuffer,
+			depth: depthBuffer,
+			stencil: stencilBuffer
+		},
+
+		enable: enable,
+		disable: disable,
+
+		bindFramebuffer: bindFramebuffer,
+		drawBuffers: drawBuffers,
+
+		useProgram: useProgram,
+
+		setBlending: setBlending,
+		setMaterial: setMaterial,
+
+		setFlipSided: setFlipSided,
+		setCullFace: setCullFace,
+
+		setLineWidth: setLineWidth,
+		setPolygonOffset: setPolygonOffset,
+
+		setScissorTest: setScissorTest,
+
+		activeTexture: activeTexture,
+		bindTexture: bindTexture,
+		unbindTexture: unbindTexture,
+		compressedTexImage2D: compressedTexImage2D,
+		compressedTexImage3D: compressedTexImage3D,
+		texImage2D: texImage2D,
+		texImage3D: texImage3D,
+
+		updateUBOMapping: updateUBOMapping,
+		uniformBlockBinding: uniformBlockBinding,
+
+		texStorage2D: texStorage2D,
+		texStorage3D: texStorage3D,
+		texSubImage2D: texSubImage2D,
+		texSubImage3D: texSubImage3D,
+		compressedTexSubImage2D: compressedTexSubImage2D,
+		compressedTexSubImage3D: compressedTexSubImage3D,
+
+		scissor: scissor,
+		viewport: viewport,
+
+		reset: reset
+
+	};
+
+}
+
+function contain( texture, aspect ) {
+
+	const imageAspect = ( texture.image && texture.image.width ) ? texture.image.width / texture.image.height : 1;
+
+	if ( imageAspect > aspect ) {
+
+		texture.repeat.x = 1;
+		texture.repeat.y = imageAspect / aspect;
+
+		texture.offset.x = 0;
+		texture.offset.y = ( 1 - texture.repeat.y ) / 2;
+
+	} else {
+
+		texture.repeat.x = aspect / imageAspect;
+		texture.repeat.y = 1;
+
+		texture.offset.x = ( 1 - texture.repeat.x ) / 2;
+		texture.offset.y = 0;
+
+	}
+
+	return texture;
+
+}
+
+function cover( texture, aspect ) {
+
+	const imageAspect = ( texture.image && texture.image.width ) ? texture.image.width / texture.image.height : 1;
+
+	if ( imageAspect > aspect ) {
+
+		texture.repeat.x = aspect / imageAspect;
+		texture.repeat.y = 1;
+
+		texture.offset.x = ( 1 - texture.repeat.x ) / 2;
+		texture.offset.y = 0;
+
+	} else {
+
+		texture.repeat.x = 1;
+		texture.repeat.y = imageAspect / aspect;
+
+		texture.offset.x = 0;
+		texture.offset.y = ( 1 - texture.repeat.y ) / 2;
+
+	}
+
+	return texture;
+
+}
+
+function fill( texture ) {
+
+	texture.repeat.x = 1;
+	texture.repeat.y = 1;
+
+	texture.offset.x = 0;
+	texture.offset.y = 0;
+
+	return texture;
+
+}
+
+
+
+/**
+ * Given the width, height, format, and type of a texture. Determines how many
+ * bytes must be used to represent the texture.
+ */
+function getByteLength( width, height, format, type ) {
+
+	const typeByteLength = getTextureTypeByteLength( type );
+
+	switch ( format ) {
+
+		// https://registry.khronos.org/OpenGL-Refpages/es3.0/html/glTexImage2D.xhtml
+		case AlphaFormat:
+			return width * height;
+		case LuminanceFormat:
+			return width * height;
+		case LuminanceAlphaFormat:
+			return width * height * 2;
+		case RedFormat:
+			return ( ( width * height ) / typeByteLength.components ) * typeByteLength.byteLength;
+		case RedIntegerFormat:
+			return ( ( width * height ) / typeByteLength.components ) * typeByteLength.byteLength;
+		case RGFormat:
+			return ( ( width * height * 2 ) / typeByteLength.components ) * typeByteLength.byteLength;
+		case RGIntegerFormat:
+			return ( ( width * height * 2 ) / typeByteLength.components ) * typeByteLength.byteLength;
+		case RGBFormat:
+			return ( ( width * height * 3 ) / typeByteLength.components ) * typeByteLength.byteLength;
+		case RGBAFormat:
+			return ( ( width * height * 4 ) / typeByteLength.components ) * typeByteLength.byteLength;
+		case RGBAIntegerFormat:
+			return ( ( width * height * 4 ) / typeByteLength.components ) * typeByteLength.byteLength;
+
+		// https://registry.khronos.org/webgl/extensions/WEBGL_compressed_texture_s3tc_srgb/
+		case RGB_S3TC_DXT1_Format:
+		case RGBA_S3TC_DXT1_Format:
+			return Math.floor( ( width + 3 ) / 4 ) * Math.floor( ( height + 3 ) / 4 ) * 8;
+		case RGBA_S3TC_DXT3_Format:
+		case RGBA_S3TC_DXT5_Format:
+			return Math.floor( ( width + 3 ) / 4 ) * Math.floor( ( height + 3 ) / 4 ) * 16;
+
+		// https://registry.khronos.org/webgl/extensions/WEBGL_compressed_texture_pvrtc/
+		case RGB_PVRTC_2BPPV1_Format:
+		case RGBA_PVRTC_2BPPV1_Format:
+			return ( Math.max( width, 16 ) * Math.max( height, 8 ) ) / 4;
+		case RGB_PVRTC_4BPPV1_Format:
+		case RGBA_PVRTC_4BPPV1_Format:
+			return ( Math.max( width, 8 ) * Math.max( height, 8 ) ) / 2;
+
+		// https://registry.khronos.org/webgl/extensions/WEBGL_compressed_texture_etc/
+		case RGB_ETC1_Format:
+		case RGB_ETC2_Format:
+			return Math.floor( ( width + 3 ) / 4 ) * Math.floor( ( height + 3 ) / 4 ) * 8;
+		case RGBA_ETC2_EAC_Format:
+			return Math.floor( ( width + 3 ) / 4 ) * Math.floor( ( height + 3 ) / 4 ) * 16;
+
+		// https://registry.khronos.org/webgl/extensions/WEBGL_compressed_texture_astc/
+		case RGBA_ASTC_4x4_Format:
+			return Math.floor( ( width + 3 ) / 4 ) * Math.floor( ( height + 3 ) / 4 ) * 16;
+		case RGBA_ASTC_5x4_Format:
+			return Math.floor( ( width + 4 ) / 5 ) * Math.floor( ( height + 3 ) / 4 ) * 16;
+		case RGBA_ASTC_5x5_Format:
+			return Math.floor( ( width + 4 ) / 5 ) * Math.floor( ( height + 4 ) / 5 ) * 16;
+		case RGBA_ASTC_6x5_Format:
+			return Math.floor( ( width + 5 ) / 6 ) * Math.floor( ( height + 4 ) / 5 ) * 16;
+		case RGBA_ASTC_6x6_Format:
+			return Math.floor( ( width + 5 ) / 6 ) * Math.floor( ( height + 5 ) / 6 ) * 16;
+		case RGBA_ASTC_8x5_Format:
+			return Math.floor( ( width + 7 ) / 8 ) * Math.floor( ( height + 4 ) / 5 ) * 16;
+		case RGBA_ASTC_8x6_Format:
+			return Math.floor( ( width + 7 ) / 8 ) * Math.floor( ( height + 5 ) / 6 ) * 16;
+		case RGBA_ASTC_8x8_Format:
+			return Math.floor( ( width + 7 ) / 8 ) * Math.floor( ( height + 7 ) / 8 ) * 16;
+		case RGBA_ASTC_10x5_Format:
+			return Math.floor( ( width + 9 ) / 10 ) * Math.floor( ( height + 4 ) / 5 ) * 16;
+		case RGBA_ASTC_10x6_Format:
+			return Math.floor( ( width + 9 ) / 10 ) * Math.floor( ( height + 5 ) / 6 ) * 16;
+		case RGBA_ASTC_10x8_Format:
+			return Math.floor( ( width + 9 ) / 10 ) * Math.floor( ( height + 7 ) / 8 ) * 16;
+		case RGBA_ASTC_10x10_Format:
+			return Math.floor( ( width + 9 ) / 10 ) * Math.floor( ( height + 9 ) / 10 ) * 16;
+		case RGBA_ASTC_12x10_Format:
+			return Math.floor( ( width + 11 ) / 12 ) * Math.floor( ( height + 9 ) / 10 ) * 16;
+		case RGBA_ASTC_12x12_Format:
+			return Math.floor( ( width + 11 ) / 12 ) * Math.floor( ( height + 11 ) / 12 ) * 16;
+
+		// https://registry.khronos.org/webgl/extensions/EXT_texture_compression_bptc/
+		case RGBA_BPTC_Format:
+		case RGB_BPTC_SIGNED_Format:
+		case RGB_BPTC_UNSIGNED_Format:
+			return Math.ceil( width / 4 ) * Math.ceil( height / 4 ) * 16;
+
+		// https://registry.khronos.org/webgl/extensions/EXT_texture_compression_rgtc/
+		case RED_RGTC1_Format:
+		case SIGNED_RED_RGTC1_Format:
+			return Math.ceil( width / 4 ) * Math.ceil( height / 4 ) * 8;
+		case RED_GREEN_RGTC2_Format:
+		case SIGNED_RED_GREEN_RGTC2_Format:
+			return Math.ceil( width / 4 ) * Math.ceil( height / 4 ) * 16;
+
+	}
+
+	throw new Error(
+		`Unable to determine texture byte length for ${format} format.`,
+	);
+
+}
+
+function getTextureTypeByteLength( type ) {
+
+	switch ( type ) {
+
+		case UnsignedByteType:
+		case ByteType:
+			return { byteLength: 1, components: 1 };
+		case UnsignedShortType:
+		case ShortType:
+		case HalfFloatType:
+			return { byteLength: 2, components: 1 };
+		case UnsignedShort4444Type:
+		case UnsignedShort5551Type:
+			return { byteLength: 2, components: 4 };
+		case UnsignedIntType:
+		case IntType:
+		case FloatType:
+			return { byteLength: 4, components: 1 };
+		case UnsignedInt5999Type:
+			return { byteLength: 4, components: 3 };
+
+	}
+
+	throw new Error( `Unknown texture type ${type}.` );
+
+}
+
+const TextureUtils = {
+	contain,
+	cover,
+	fill,
+	getByteLength
+};
+
+function WebGLTextures( _gl, extensions, state, properties, capabilities, utils, info ) {
+
+	const multisampledRTTExt = extensions.has( 'WEBGL_multisampled_render_to_texture' ) ? extensions.get( 'WEBGL_multisampled_render_to_texture' ) : null;
+	const supportsInvalidateFramebuffer = typeof navigator === 'undefined' ? false : /OculusBrowser/g.test( navigator.userAgent );
+
+	const _imageDimensions = new Vector2();
+	const _videoTextures = new WeakMap();
+	let _canvas;
+
+	const _sources = new WeakMap(); // maps WebglTexture objects to instances of Source
+
+	// cordova iOS (as of 5.0) still uses UIWebView, which provides OffscreenCanvas,
+	// also OffscreenCanvas.getContext("webgl"), but not OffscreenCanvas.getContext("2d")!
+	// Some implementations may only implement OffscreenCanvas partially (e.g. lacking 2d).
+
+	let useOffscreenCanvas = false;
+
+	try {
+
+		useOffscreenCanvas = typeof OffscreenCanvas !== 'undefined'
+			// eslint-disable-next-line compat/compat
+			&& ( new OffscreenCanvas( 1, 1 ).getContext( '2d' ) ) !== null;
+
+	} catch ( err ) {
+
+		// Ignore any errors
+
+	}
+
+	function createCanvas( width, height ) {
+
+		// Use OffscreenCanvas when available. Specially needed in web workers
+
+		return useOffscreenCanvas ?
+			// eslint-disable-next-line compat/compat
+			new OffscreenCanvas( width, height ) : createElementNS( 'canvas' );
+
+	}
+
+	function resizeImage( image, needsNewCanvas, maxSize ) {
+
+		let scale = 1;
+
+		const dimensions = getDimensions( image );
+
+		// handle case if texture exceeds max size
+
+		if ( dimensions.width > maxSize || dimensions.height > maxSize ) {
+
+			scale = maxSize / Math.max( dimensions.width, dimensions.height );
+
+		}
+
+		// only perform resize if necessary
+
+		if ( scale < 1 ) {
+
+			// only perform resize for certain image types
+
+			if ( ( typeof HTMLImageElement !== 'undefined' && image instanceof HTMLImageElement ) ||
+				( typeof HTMLCanvasElement !== 'undefined' && image instanceof HTMLCanvasElement ) ||
+				( typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap ) ||
+				( typeof VideoFrame !== 'undefined' && image instanceof VideoFrame ) ) {
+
+				const width = Math.floor( scale * dimensions.width );
+				const height = Math.floor( scale * dimensions.height );
+
+				if ( _canvas === undefined ) _canvas = createCanvas( width, height );
+
+				// cube textures can't reuse the same canvas
+
+				const canvas = needsNewCanvas ? createCanvas( width, height ) : _canvas;
+
+				canvas.width = width;
+				canvas.height = height;
+
+				const context = canvas.getContext( '2d' );
+				context.drawImage( image, 0, 0, width, height );
+
+				console.warn( 'THREE.WebGLRenderer: Texture has been resized from (' + dimensions.width + 'x' + dimensions.height + ') to (' + width + 'x' + height + ').' );
+
+				return canvas;
+
+			} else {
+
+				if ( 'data' in image ) {
+
+					console.warn( 'THREE.WebGLRenderer: Image in DataTexture is too big (' + dimensions.width + 'x' + dimensions.height + ').' );
+
+				}
+
+				return image;
+
+			}
+
+		}
+
+		return image;
+
+	}
+
+	function textureNeedsGenerateMipmaps( texture ) {
+
+		return texture.generateMipmaps && texture.minFilter !== NearestFilter && texture.minFilter !== LinearFilter;
+
+	}
+
+	function generateMipmap( target ) {
+
+		_gl.generateMipmap( target );
+
+	}
+
+	function getInternalFormat( internalFormatName, glFormat, glType, colorSpace, forceLinearTransfer = false ) {
+
+		if ( internalFormatName !== null ) {
+
+			if ( _gl[ internalFormatName ] !== undefined ) return _gl[ internalFormatName ];
+
+			console.warn( 'THREE.WebGLRenderer: Attempt to use non-existing WebGL internal format \'' + internalFormatName + '\'' );
+
+		}
+
+		let internalFormat = glFormat;
+
+		if ( glFormat === _gl.RED ) {
+
+			if ( glType === _gl.FLOAT ) internalFormat = _gl.R32F;
+			if ( glType === _gl.HALF_FLOAT ) internalFormat = _gl.R16F;
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = _gl.R8;
+
+		}
+
+		if ( glFormat === _gl.RED_INTEGER ) {
+
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = _gl.R8UI;
+			if ( glType === _gl.UNSIGNED_SHORT ) internalFormat = _gl.R16UI;
+			if ( glType === _gl.UNSIGNED_INT ) internalFormat = _gl.R32UI;
+			if ( glType === _gl.BYTE ) internalFormat = _gl.R8I;
+			if ( glType === _gl.SHORT ) internalFormat = _gl.R16I;
+			if ( glType === _gl.INT ) internalFormat = _gl.R32I;
+
+		}
+
+		if ( glFormat === _gl.RG ) {
+
+			if ( glType === _gl.FLOAT ) internalFormat = _gl.RG32F;
+			if ( glType === _gl.HALF_FLOAT ) internalFormat = _gl.RG16F;
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = _gl.RG8;
+
+		}
+
+		if ( glFormat === _gl.RG_INTEGER ) {
+
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = _gl.RG8UI;
+			if ( glType === _gl.UNSIGNED_SHORT ) internalFormat = _gl.RG16UI;
+			if ( glType === _gl.UNSIGNED_INT ) internalFormat = _gl.RG32UI;
+			if ( glType === _gl.BYTE ) internalFormat = _gl.RG8I;
+			if ( glType === _gl.SHORT ) internalFormat = _gl.RG16I;
+			if ( glType === _gl.INT ) internalFormat = _gl.RG32I;
+
+		}
+
+		if ( glFormat === _gl.RGB_INTEGER ) {
+
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = _gl.RGB8UI;
+			if ( glType === _gl.UNSIGNED_SHORT ) internalFormat = _gl.RGB16UI;
+			if ( glType === _gl.UNSIGNED_INT ) internalFormat = _gl.RGB32UI;
+			if ( glType === _gl.BYTE ) internalFormat = _gl.RGB8I;
+			if ( glType === _gl.SHORT ) internalFormat = _gl.RGB16I;
+			if ( glType === _gl.INT ) internalFormat = _gl.RGB32I;
+
+		}
+
+		if ( glFormat === _gl.RGBA_INTEGER ) {
+
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = _gl.RGBA8UI;
+			if ( glType === _gl.UNSIGNED_SHORT ) internalFormat = _gl.RGBA16UI;
+			if ( glType === _gl.UNSIGNED_INT ) internalFormat = _gl.RGBA32UI;
+			if ( glType === _gl.BYTE ) internalFormat = _gl.RGBA8I;
+			if ( glType === _gl.SHORT ) internalFormat = _gl.RGBA16I;
+			if ( glType === _gl.INT ) internalFormat = _gl.RGBA32I;
+
+		}
+
+		if ( glFormat === _gl.RGB ) {
+
+			if ( glType === _gl.UNSIGNED_INT_5_9_9_9_REV ) internalFormat = _gl.RGB9_E5;
+
+		}
+
+		if ( glFormat === _gl.RGBA ) {
+
+			const transfer = forceLinearTransfer ? LinearTransfer : ColorManagement.getTransfer( colorSpace );
+
+			if ( glType === _gl.FLOAT ) internalFormat = _gl.RGBA32F;
+			if ( glType === _gl.HALF_FLOAT ) internalFormat = _gl.RGBA16F;
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = ( transfer === SRGBTransfer ) ? _gl.SRGB8_ALPHA8 : _gl.RGBA8;
+			if ( glType === _gl.UNSIGNED_SHORT_4_4_4_4 ) internalFormat = _gl.RGBA4;
+			if ( glType === _gl.UNSIGNED_SHORT_5_5_5_1 ) internalFormat = _gl.RGB5_A1;
+
+		}
+
+		if ( internalFormat === _gl.R16F || internalFormat === _gl.R32F ||
+			internalFormat === _gl.RG16F || internalFormat === _gl.RG32F ||
+			internalFormat === _gl.RGBA16F || internalFormat === _gl.RGBA32F ) {
+
+			extensions.get( 'EXT_color_buffer_float' );
+
+		}
+
+		return internalFormat;
+
+	}
+
+	function getInternalDepthFormat( useStencil, depthType ) {
+
+		let glInternalFormat;
+		if ( useStencil ) {
+
+			if ( depthType === null || depthType === UnsignedIntType || depthType === UnsignedInt248Type ) {
+
+				glInternalFormat = _gl.DEPTH24_STENCIL8;
+
+			} else if ( depthType === FloatType ) {
+
+				glInternalFormat = _gl.DEPTH32F_STENCIL8;
+
+			} else if ( depthType === UnsignedShortType ) {
+
+				glInternalFormat = _gl.DEPTH24_STENCIL8;
+				console.warn( 'DepthTexture: 16 bit depth attachment is not supported with stencil. Using 24-bit attachment.' );
+
+			}
+
+		} else {
+
+			if ( depthType === null || depthType === UnsignedIntType || depthType === UnsignedInt248Type ) {
