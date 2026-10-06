@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+<meta name="cinema-build" content="13.1-loading-fix">
 <meta charset="utf-8"><link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#11161d">
@@ -606,6 +607,8 @@ window.__sceneError=null;
 window.__cinemaDebug={sceneReady:false,fatalError:null,counts:{},version:'delivery-ui-fix',frames:0};
 window.__reportCinemaError=function(error){
   const message=(error&&error.stack)||String(error);
+  if(window.__finishCinemaLoading)window.__finishCinemaLoading();
+  window.__sceneLoadPhase='error';
   window.__sceneReady=false;window.__sceneError=message;
   Object.assign(window.__cinemaDebug,{sceneReady:false,fatalError:message});
   const overlay=document.getElementById('loading');
@@ -620,15 +623,27 @@ window.__reportCinemaError=function(error){
 addEventListener('error',event=>{if(event.error)window.__reportCinemaError(event.error);else if(event.target&&event.target.tagName==='SCRIPT')window.__reportCinemaError(new Error('脚本加载失败：'+event.target.src));},true);
 
 addEventListener('unhandledrejection',event=>window.__reportCinemaError(event.reason));
-setTimeout(function(){
+// Download time is not a rendering failure. Keep startup pending until the
+// first rendered frame or an actual script/WebGL error, even on slow networks.
+window.__sceneLoadPhase='downloading';
+window.__cinemaLoadingTimers=[];
+window.__finishCinemaLoading=function(){
+  window.__cinemaLoadingTimers.forEach(clearTimeout);
+  window.__cinemaLoadingTimers.length=0;
+};
+function showCinemaLoadingProgress(message){
   if(window.__sceneReady||window.__sceneError)return;
   var overlay=document.getElementById('loading');
-  if(overlay)overlay.textContent='正在启用手机兼容模式…';
-},3500);
-setTimeout(function(){
-  if(window.__sceneReady||window.__sceneError)return;
-  window.__reportCinemaError(new Error('场景初始化超时。请使用 Safari / Chrome / Edge 打开；如果从微信文件预览进入，请改用浏览器打开此 HTML。'));
-},12000);
+  if(overlay)overlay.textContent=message;
+  var status=document.getElementById('entryStatus');
+  if(status)status.textContent=message+' 可先选择入口，加载完成后自动进入。';
+}
+window.__cinemaLoadingTimers.push(setTimeout(function(){
+  showCinemaLoadingProgress('正在加载三维场景，请稍候…');
+},3500));
+window.__cinemaLoadingTimers.push(setTimeout(function(){
+  showCinemaLoadingProgress('三维场景仍在加载，网络较慢时需要多等一会儿。');
+},12000));
 
 </script>
 <script>
@@ -56801,6 +56816,7 @@ function runPageAction(config,initial,fromAcoustic){
 }
 
 async function boot(){
+ window.__sceneLoadPhase='building';
  const $=id=>document.getElementById(id);
  const parseAssets=window.__cinemaEmbeddedAssets||await fetch('assets/catalog.json').then(r=>{if(!r.ok)throw new Error('本地资源目录加载失败');return r.json()});
  $('brandLogo').src=parseAssets.logo;
@@ -56839,7 +56855,7 @@ async function boot(){
  ctx.onRendered=()=>{
    if(ctx.renderer.getContext().isContextLost())throw new Error('WebGL 上下文已丢失');
    debug.frames++;
-   if(!debug.sceneReady){debug.sceneReady=true;window.__sceneReady=true;$('loading').classList.add('done');}
+   if(!debug.sceneReady){debug.sceneReady=true;window.__sceneReady=true;window.__sceneLoadPhase='ready';window.__finishCinemaLoading();$('loading').classList.add('done');}
  };
  ctx.canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();window.__reportCinemaError(new Error('WebGL 上下文丢失，请重新加载页面'));});
  ctx.ui=createUI(ctx);debug.ui=ctx.ui;debug.projectSpeaker=(name)=>{const r=ctx.speakerRecords.find(r=>r.name===name);if(!r)return null;const v=r.axisOrigin.clone().project(ctx.camera),rect=ctx.canvas.getBoundingClientRect();return {x:rect.left+(v.x+1)*rect.width/2,y:rect.top+(1-v.y)*rect.height/2}};
