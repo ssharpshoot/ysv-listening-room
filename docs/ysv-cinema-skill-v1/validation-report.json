@@ -1,0 +1,200 @@
+{
+  "skill": "ysv-cinema-proposal",
+  "version": "1.0.0",
+  "date": "2026-10-07",
+  "timezone": "Asia/Shanghai",
+  "core_execution": {
+    "runtime": "functions.exec JavaScript V8",
+    "actual_source_executed": ".agents/skills/ysv-cinema-proposal/scripts/cinema-core.cjs",
+    "passed": 26,
+    "failed": 0,
+    "outcomes": [
+      {
+        "name": "JBL名义亮度：约31.1fL/106.6nits",
+        "passed": true
+      },
+      {
+        "name": "亮度条件系数按输入缩放，不自动发明损耗",
+        "passed": true
+      },
+      {
+        "name": "第一/二排中轴屏幕水平角",
+        "passed": true
+      },
+      {
+        "name": "前墙与幕面距离明确分开",
+        "passed": true
+      },
+      {
+        "name": "偏心座位水平角、中心仰角与上下沿不同",
+        "passed": true
+      },
+      {
+        "name": "屏幕后方与非数值耳点被拒绝",
+        "passed": true
+      },
+      {
+        "name": "音箱夹角不使用屏幕视角",
+        "passed": true
+      },
+      {
+        "name": "4Ω的2.83V口径约扣3dB",
+        "passed": true
+      },
+      {
+        "name": "未知灵敏度口径不自动推定",
+        "passed": true
+      },
+      {
+        "name": "标量声压取能力限制且不证明逐频通过",
+        "passed": true
+      },
+      {
+        "name": "距离翻倍约减6dB，明确损耗只扣一次",
+        "passed": true
+      },
+      {
+        "name": "四只等幅：能量参考+6dB、同相上限+12dB",
+        "passed": true
+      },
+      {
+        "name": "不等幅多炮按线性量求和",
+        "passed": true
+      },
+      {
+        "name": "8m/5m的一至四阶共振",
+        "passed": true
+      },
+      {
+        "name": "几何比较忽略镜头与高亮",
+        "passed": true
+      },
+      {
+        "name": "音箱朝向变化会被检测",
+        "passed": true
+      },
+      {
+        "name": "新房间独立参数不混入JBL",
+        "passed": true
+      },
+      {
+        "name": "缺资料仍允许完整部分计算，不生成价格或输出通过",
+        "passed": true
+      },
+      {
+        "name": "重复声道对象ID被拒绝",
+        "passed": true
+      },
+      {
+        "name": "座位越界和只有参考点不能通过逐座准备度",
+        "passed": true
+      },
+      {
+        "name": "功放通道重复、超分配与不存在对象会报警",
+        "passed": true
+      },
+      {
+        "name": "无有效来源不宣称输入核验，错误来源指针被拒绝",
+        "passed": true
+      },
+      {
+        "name": "完整报价有来源才求和，缺价不填零",
+        "passed": true
+      },
+      {
+        "name": "发布授权与实际目标必须属于当前项目",
+        "passed": true
+      },
+      {
+        "name": "四炮各座位合成参考来自该项目逐只数据",
+        "passed": true
+      },
+      {
+        "name": "亮度计算不依赖未知的幕面位置",
+        "passed": true
+      }
+    ],
+    "scope": "核心计算与资料逻辑；不包含真实文件系统、浏览器、WebGL或部署"
+  },
+  "command_checks": {
+    "method": "实际runCommand函数，注入内存文件适配器；未执行Node文件系统层",
+    "checks": [
+      {
+        "command": "inspect fixture.json",
+        "expected_exit": 0,
+        "actual_exit": 0,
+        "passed": true
+      },
+      {
+        "command": "metrics fixture.json",
+        "expected_exit": 0,
+        "actual_exit": 0,
+        "passed": true
+      },
+      {
+        "command": "compare fixture.json fixture.json",
+        "expected_exit": 0,
+        "actual_exit": 0,
+        "passed": true
+      },
+      {
+        "command": "compare fixture.json changed.json",
+        "expected_exit": 2,
+        "actual_exit": 2,
+        "passed": true
+      },
+      {
+        "command": "validate-skill skill",
+        "expected_exit": 0,
+        "actual_exit": 0,
+        "passed": true
+      },
+      {
+        "command": "selftest",
+        "expected_exit": 0,
+        "actual_exit": 0,
+        "passed": true
+      },
+      {
+        "command": "inspect broken.json",
+        "expected_exit": 1,
+        "actual_exit": 1,
+        "passed": true
+      },
+      {
+        "command": "metrics missing.json",
+        "expected_exit": 1,
+        "actual_exit": 1,
+        "passed": true
+      },
+      {
+        "command": "unknown",
+        "expected_exit": 1,
+        "actual_exit": 1,
+        "passed": true
+      },
+      {
+        "command": "inspect template.json",
+        "expected_exit": 1,
+        "actual_exit": 1,
+        "passed": true
+      }
+    ]
+  },
+  "structure": {
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "name": "ysv-cinema-proposal",
+    "files": 19
+  },
+  "not_executed": [
+    "官方init_skill.py与quick_validate.py：本地终端不可启动",
+    "真实Node进程与文件系统适配器",
+    "个人技能目录安装与Codex自动发现",
+    "真实浏览器与WebGL",
+    "JBL网页修改或Pages部署",
+    "三个真实网页任务端到端"
+  ],
+  "scope_note": "核心工具/文件结构通过，不等于跨设备网页或工程验收"
+}

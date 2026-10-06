@@ -1,0 +1,116 @@
+{
+  "template_version": "1.0.0",
+  "note": "按客户关注点调整顺序和页数；page_id稳定，页码随目录生成。默认是结构模板，不代表客户已确认。",
+  "pages": [
+    {
+      "page_id": "intro",
+      "customer_question": "这个方案适合我们家怎样使用？",
+      "view": "room_overview",
+      "controls": [
+        "presentation",
+        "roam"
+      ],
+      "evidence": [
+        "confirmed_goals"
+      ],
+      "status": "draft"
+    },
+    {
+      "page_id": "room-plan",
+      "customer_question": "房间、座位和通道为什么这样安排？",
+      "view": "top",
+      "controls": [
+        "layers",
+        "seat"
+      ],
+      "evidence": [
+        "room_dimensions",
+        "installation_constraints"
+      ],
+      "status": "draft"
+    },
+    {
+      "page_id": "seat-experience",
+      "customer_question": "第一排和第二排分别能看到、听到什么？",
+      "view": "top_or_side",
+      "controls": [
+        "seat",
+        "view_type"
+      ],
+      "evidence": [
+        "screen_angles",
+        "speaker_angles"
+      ],
+      "status": "draft"
+    },
+    {
+      "page_id": "selection",
+      "customer_question": "为什么选这些器材，有哪些替代？",
+      "view": "speaker_tour",
+      "controls": [
+        "channel_group",
+        "replay"
+      ],
+      "evidence": [
+        "manufacturer_data",
+        "installation",
+        "capacity_estimate",
+        "alternative"
+      ],
+      "status": "draft"
+    },
+    {
+      "page_id": "acoustics",
+      "customer_question": "装修和声学怎样配合，家人会不会受影响？",
+      "view": "acoustic_layers",
+      "controls": [
+        "layer"
+      ],
+      "evidence": [
+        "treatment_plan",
+        "isolation_scope"
+      ],
+      "status": "draft"
+    },
+    {
+      "page_id": "budget",
+      "customer_question": "整体多少钱，包含什么？",
+      "view": "system_overview",
+      "controls": [],
+      "evidence": [
+        "valid_quote",
+        "service_scope",
+        "exclusions"
+      ],
+      "status": "draft"
+    },
+    {
+      "page_id": "daily-use",
+      "customer_question": "家人平时如何操作，维护是否方便？",
+      "view": "signal_chain",
+      "controls": [
+        "scene"
+      ],
+      "evidence": [
+        "control_sequence",
+        "maintenance_access"
+      ],
+      "status": "draft"
+    },
+    {
+      "page_id": "acceptance",
+      "customer_question": "怎样验收，之后有什么服务？",
+      "view": "measurement_positions",
+      "controls": [
+        "measurement_point"
+      ],
+      "evidence": [
+        "acceptance_plan",
+        "real_measurements_if_available",
+        "guide",
+        "aftercare"
+      ],
+      "status": "draft"
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "project": {
+    "id": null,
+    "name": null,
+    "designer": "刘源",
+    "brand": "源声视界 / YSV",
+    "stage": "draft",
+    "version": null
+  },
+  "coordinates": {
+    "unit": "mm",
+    "x_positive": "audience_left",
+    "y_positive": "front_to_back",
+    "z_positive": "up",
+    "origin": "front_wall_center_floor"
+  },
+  "locks": {
+    "geometry_locked": false,
+    "baseline_ref": null,
+    "approved_changes": []
+  },
+  "room_mm": {
+    "width": null,
+    "length": null,
+    "height": null,
+    "installation_constraints": []
+  },
+  "screen": {
+    "x_mm": 0,
+    "y_mm": null,
+    "bottom_mm": null,
+    "width_mm": null,
+    "height_mm": null,
+    "gain": null,
+    "model": null
+  },
+  "projection": {
+    "model": null,
+    "lumens": null,
+    "lumens_basis": null,
+    "brightness_retention_factor": 1,
+    "retention_note": "1仅作名义理论估算，不表示校准后光输出"
+  },
+  "seats": [],
+  "reference_positions": [],
+  "speakers": [],
+  "amplifiers": [],
+  "signal_chain": [],
+  "targets": {
+    "screen_horizontal_deg": {
+      "reference": null,
+      "project_target": null,
+      "source": null
+    },
+    "speaker_horizontal_deg": {
+      "min": null,
+      "max": null,
+      "source": null
+    },
+    "fullrange_spl": {
+      "db": null,
+      "hz_min": null,
+      "hz_max": null,
+      "source": null
+    },
+    "sub_spl": {
+      "db": null,
+      "hz_min": null,
+      "hz_max": null,
+      "source": null
+    },
+    "rt60_s": {
+      "min": null,
+      "max": null,
+      "source": null
+    }
+  },
+  "budget": {
+    "currency": "CNY",
+    "items": [],
+    "exclusions": [],
+    "tax_note": null,
+    "service_scope": null,
+    "quote_date": null
+  },
+  "source_records": [],
+  "delivery": {
+    "repository": null,
+    "branch": null,
+    "entry_path": null,
+    "url": null,
+    "publish_authorization": "none",
+    "authorization_note": null
+  },
+  "notes": [
+    "空值代表未知，切勿自动填入JBL案例参数。",
+    "本文件只定义资料结构，不是已确认项目。"
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "源声视界 · 3D影院方案"
+  short_description: "制作维护客户能看懂的三维影院汇报，检查工程数据、交互和发布交付"
+  default_prompt: "使用 $ysv-cinema-proposal，读取当前项目资料，按本次授权完成影院方案规划、网页修改或排障，并给出检查结果与可审阅成果。"

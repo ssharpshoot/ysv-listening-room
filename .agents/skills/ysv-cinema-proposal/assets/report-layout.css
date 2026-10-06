@@ -1,0 +1,25 @@
+/* 新项目/已授权改版的布局起点。维护旧工程时只复制相关规则。 */
+:root { color-scheme: dark; --bg:#101317; --panel:#191e25; --ink:#eef2f5; --muted:#aeb9c6; --accent:#caa86d; }
+* { box-sizing:border-box; }
+body { margin:0; color:var(--ink); background:var(--bg); font-family:system-ui,"Microsoft YaHei","PingFang SC",sans-serif; }
+.report-layout { min-height:100dvh; display:grid; grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr); }
+.scene-panel { position:relative; min-width:0; min-height:60dvh; }
+.scene-panel canvas { width:100%; height:100%; display:block; }
+.scene-controls { position:absolute; left:16px; right:16px; bottom:16px; display:flex; flex-wrap:wrap; gap:8px; }
+.scene-controls button { min-height:44px; padding:10px 14px; color:var(--ink); background:var(--panel); border:1px solid #38414c; border-radius:10px; }
+.scene-controls button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.report-copy { min-width:0; padding:clamp(20px,3vw,44px); background:var(--panel); }
+.report-copy h1 { font-size:clamp(24px,2.5vw,36px); line-height:1.25; }
+.report-copy p,.report-copy li { font-size:clamp(15px,1.2vw,18px); line-height:1.65; overflow-wrap:anywhere; }
+.data-token { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.data-grid { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); }
+.data-card { min-width:0; padding:12px; border:1px solid #38414c; border-radius:12px; }
+.table-scroll { max-width:100%; overflow:auto; }
+.data-table { width:100%; border-collapse:collapse; font-size:14px; }
+.data-table th,.data-table td { padding:8px; text-align:left; border-bottom:1px solid #38414c; }
+@media (max-width:800px) {
+  .report-layout { grid-template-columns:1fr; }
+  .scene-panel { min-height:48dvh; }
+  .scene-controls { left:10px; right:10px; bottom:10px; }
+  .report-copy { padding:20px; }
+}
