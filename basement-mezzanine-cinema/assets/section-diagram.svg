@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 720" role="img" aria-label="黄色框平面与左右剖面红线对应示意，概念关联非结构放样">
+  <defs><style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#e9eef5}.title{font-size:25px;font-weight:600}.head{font-size:21px;font-weight:600}.label{font-size:18px}.sub{font-size:16px;fill:#b5c3d0}.small{font-size:15px;fill:#b5c3d0}.dim{font-size:18px;fill:#efc77a}</style><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#efc77a"/></marker></defs>
+  <rect width="1120" height="720" fill="#101923"/>
+  <text x="48" y="54" class="title">平面与剖面中的影院候选开间</text>
+  <text x="48" y="82" class="sub">红线标注夹层影院的规划范围，开间和净高需现场复核</text>
+  <text x="61" y="139" class="head">① 平面简化定位</text>
+  <rect x="65" y="163" width="450" height="154" fill="#213140" stroke="#8ea2b5" stroke-width="3"/>
+  <text x="209" y="234" class="label">现有建筑 / 封闭空间方向</text>
+  <rect x="65" y="317" width="260" height="180" fill="#1b3040" stroke="#8ea2b5" stroke-width="3"/>
+  <text x="117" y="400" class="label">左侧相邻地下室</text>
+  <rect x="325" y="317" width="190" height="180" fill="#373224" stroke="#e6b45d" stroke-width="6"/>
+  <text x="375" y="390" class="head">黄色框</text>
+  <text x="354" y="423" class="label">上层拟做影院</text>
+  <rect x="65" y="497" width="260" height="150" fill="#183d45" stroke="#5eabb4" stroke-width="3"/>
+  <text x="151" y="575" class="label">下沉庭院</text>
+  <rect x="325" y="497" width="190" height="150" fill="#233943" stroke="#8ea2b5" stroke-width="3"/>
+  <text x="362" y="563" class="label">右下区域</text>
+  <text x="365" y="591" class="small">图注约 5.65 m</text>
+  <text x="355" y="468" class="small">短向约 5.8 m，图像推算</text>
+  <path d="M325 666h190" stroke="#efc77a" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="358" y="694" class="dim">图注横向 6.8 m</text>
+  <text x="658" y="139" class="head">② 由两张相反视图还原的剖面关系</text>
+  <rect x="660" y="216" width="410" height="360" fill="#172733" stroke="#8095a8" stroke-width="3"/>
+  <rect x="660" y="216" width="105" height="360" fill="#203b42"/>
+  <rect x="765" y="216" width="183" height="360" fill="#353022"/>
+  <rect x="948" y="216" width="122" height="360" fill="#233340"/>
+  <path d="M660 216h410M765 216v360M948 216v360" stroke="#9dafbd" stroke-width="6" fill="none"/>
+  <path d="M767 408h180M767 408v-190" stroke="#f25a40" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <text x="670" y="318" class="small">右下区域 /</text><text x="670" y="342" class="small">露台方向</text>
+  <text x="797" y="327" class="head">上层影院</text>
+  <text x="792" y="361" class="small">现顶板与红横线之间</text>
+  <text x="810" y="508" class="label">下层弹性空间</text>
+  <text x="959" y="350" class="label">建筑方向</text>
+  <text x="783" y="434" class="small">红横线 ≈ 拟新增夹层楼面</text>
+  <text x="668" y="609" class="sub">右视图 / 左视图只是观察方向相反；截图左右顺序因此互换。</text>
+  <text x="668" y="642" class="sub">竖红线为影院边界意向，不证明已有墙体或结构支承。</text>
+</svg>

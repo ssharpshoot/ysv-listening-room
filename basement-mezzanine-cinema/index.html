@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="cinema-build" content="basement-mezzanine-20261107-pages-v0.1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1420">
+  <title>荆门地下室 · 7.2.4 影院与 KTV 交互空间</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-mark"><img src="./assets/ysv-logo.png" alt="源声视界 YSV 标志"></div>
+      <div class="brand-copy">
+        <span class="eyebrow">源声视界 · 空间方案 / 在线演示</span>
+        <h1>荆门地下室夹层影院</h1>
+      </div>
+      <div class="topbar-meta"><span class="meta-dot"></span> 交互方案 <strong>v0.1</strong></div>
+    </header>
+
+    <main class="workspace">
+      <section class="stage-panel" aria-labelledby="stage-title">
+        <div class="stage-heading">
+          <div>
+            <p class="section-kicker">依据平面与剖面概念示意</p>
+            <h2 id="stage-title">同一空间，两种使用方式</h2>
+          </div>
+          <span class="concept-badge">概念模型 · 待复尺</span>
+        </div>
+
+        <div class="mode-tabs" role="group" aria-label="展示内容">
+          <button id="mode-cinema" class="mode-tab active" type="button" aria-pressed="true"><span class="mode-icon">▶</span> 电影 <strong>7.2.4</strong></button>
+          <button id="mode-ktv" class="mode-tab" type="button" aria-pressed="false"><span class="mode-icon">♪</span> 同室 KTV <strong>2.0</strong></button>
+          <button id="mode-modes" class="mode-tab" type="button" aria-pressed="false"><span class="mode-icon">◉</span> 房间模式</button>
+          <button id="mode-section" class="mode-tab" type="button" aria-pressed="false"><span class="mode-icon">▤</span> 夹层剖面</button>
+        </div>
+
+        <div class="stage-frame" id="stage-frame">
+          <div id="scene" class="scene" aria-label="可拖动旋转的三维影院场景"></div>
+          <div id="load-state" class="load-state" role="status">正在准备三维空间…</div>
+          <div class="stage-overline"><span class="live-dot"></span><span id="scene-caption">影院声道与六座布局</span></div>
+          <div class="orientation-chip">影院候选开间 · 银幕在右</div>
+          <div class="sub-switch" id="sub-switch" role="group" aria-label="三维低音炮数量" hidden><span>低频对比</span><button type="button" data-sub-switch="single" aria-pressed="false">1 炮</button><button type="button" data-sub-switch="dual" class="active" aria-pressed="true">2 炮</button><button type="button" data-sub-switch="quad" aria-pressed="false">4 炮</button></div>
+          <div class="stage-note" id="stage-note">拖动旋转 · 滚轮或双指缩放 · 点击音箱查看用途</div>
+          <div class="viewbar" role="group" aria-label="视角">
+            <button type="button" data-view="house" class="view-button active">全屋</button>
+            <button type="button" data-view="room" class="view-button">影院</button>
+            <button type="button" data-view="top" class="view-button">俯视</button>
+            <button type="button" data-view="seat" class="view-button">主座</button>
+            <button type="button" data-view="section" class="view-button">侧剖</button>
+          </div>
+        </div>
+
+        <div class="parameter-panel" aria-label="房间尺寸与低频观察设置">
+          <div class="parameter-heading"><strong>空间实时推演</strong><span>拖动尺寸 → 模型、模态与候选座位同步变化</span></div>
+          <div class="preset-row" role="group" aria-label="空间预设">
+            <button type="button" data-preset="recommended" class="preset-button active">推荐 · 保留空间</button>
+            <button type="button" data-preset="insulated" class="preset-button">加厚围护</button>
+            <button type="button" data-preset="compact" class="preset-button">紧凑对比</button>
+          </div>
+          <div class="sliders">
+            <label class="slider-field"><span>净长 <output id="length-value">6.2 m</output></span><input id="length-slider" type="range" min="5.2" max="6.5" step="0.1" value="6.2"></label>
+            <label class="slider-field"><span>净宽 <output id="width-value">5.3 m</output></span><input id="width-slider" type="range" min="4.4" max="5.5" step="0.1" value="5.3"></label>
+            <label class="slider-field"><span>净高 <output id="height-value">2.8 m</output></span><input id="height-slider" type="range" min="2.3" max="3.0" step="0.1" value="2.8"></label>
+          </div>
+          <div class="frequency-row"><label for="frequency-slider">观察频率 <output id="frequency-value">42 Hz</output></label><input id="frequency-slider" type="range" min="25" max="120" step="1" value="42"></div>
+          <p id="fit-status" class="fit-status">当前尺寸位于黄色框的暂估可用范围内。</p>
+        </div>
+
+        <section class="sub-comparison" aria-labelledby="sub-comparison-heading">
+          <div class="comparison-heading"><div><span class="section-kicker">低频方案对比 · 同一间房</span><h3 id="sub-comparison-heading">1 炮 / 2 炮 / 4 炮，六个座位会怎样？</h3></div><span class="comparison-frequency" id="comparison-frequency">42 Hz 截面</span></div>
+          <p class="comparison-intro">三张图与上方 3D 热区采用同一频点、同一色标。蓝色较低、橙色较高；紫色圆点为炮位，六个白点为两排耳位。点击方案可跳到上方 3D 查看。</p>
+          <div class="comparison-grid" role="group" aria-label="选择三维低音炮对比布局">
+            <button type="button" class="comparison-card" data-sub-layout="single" aria-pressed="false"><span class="comparison-card-head"><strong>单炮</strong><small>仅前墙中点</small></span><canvas id="map-single" width="240" height="286" aria-label="单炮在当前频率的相对低频热图"></canvas><span class="comparison-card-foot">六座频段差异 <strong id="spread-single">计算中…</strong></span></button>
+            <button type="button" class="comparison-card active" data-sub-layout="dual" aria-pressed="true"><span class="comparison-card-head"><strong>双炮 <em>当前 7.2.4</em></strong><small>前后墙中点</small></span><canvas id="map-dual" width="240" height="286" aria-label="双炮在当前频率的相对低频热图"></canvas><span class="comparison-card-foot">六座频段差异 <strong id="spread-dual">计算中…</strong></span></button>
+            <button type="button" class="comparison-card" data-sub-layout="quad" aria-pressed="false"><span class="comparison-card-head"><strong>四炮 <em>备选</em></strong><small>四面墙中点</small></span><canvas id="map-quad" width="240" height="286" aria-label="四炮在当前频率的相对低频热图"></canvas><span class="comparison-card-foot">六座频段差异 <strong id="spread-quad">计算中…</strong></span></button>
+          </div>
+          <div class="comparison-scale"><span>相对低响应</span><i></i><span>相对高响应</span></div>
+          <div class="comparison-chart"><div class="chart-heading"><strong>30–120 Hz · 六座差异随频率变化</strong><span>越低代表座位间越一致</span></div><svg id="spread-chart" viewBox="0 0 640 180" role="img" aria-label="单炮、双炮、四炮在六个座位的低频差异曲线"></svg><div class="chart-legend"><span class="single">单炮</span><span class="dual">双炮</span><span class="quad">四炮</span></div></div>
+          <p id="comparison-takeaway" class="comparison-takeaway">正在计算座位间差异…</p>
+          <p class="comparison-caveat">数值为六座在 30–120 Hz 各频点响应标准差的平均值，按相同总输入归一化；越低表示该模型中的座位间差异越小。同频率三档共用色标，切换频率后色标会重新缩放。模态频率不会因炮数改变。未计入真实墙体、低音炮频响、延时、增益、EQ 与测量，四炮并不保证优于双炮。<a href="https://aes.org/publications/elibrary/elibrary-page/?id=13680" target="_blank" rel="noopener noreferrer">研究依据：Welti / Devantier，JAES 2006</a></p>
+        </section>
+
+        <div class="stage-footer">
+          <div class="legend"><span class="legend-item"><i class="swatch cinema"></i> 影院声道</span><span class="legend-item"><i class="swatch sub"></i> 双低音</span><span class="legend-item"><i class="swatch ktv"></i> 独立 KTV</span><span class="legend-item"><i class="swatch seat"></i> 两排座位</span></div>
+          <button type="button" id="reset-camera" class="text-button">重置视角 ↗</button>
+        </div>
+      </section>
+
+      <aside class="info-panel" aria-label="空间与设备说明">
+        <div class="info-scroll">
+          <section class="info-hero">
+            <p class="section-kicker">项目快照</p>
+            <h2 id="mode-title">电影优先的 7.2.4 布局</h2>
+            <p id="mode-description">两排共六座，银幕位于原平面黄色框右侧。7 个平面声道、2 只低音炮和 4 只实体顶部音箱按当前净尺寸初排。</p>
+          </section>
+
+          <div class="metric-grid" aria-label="房间暂估尺寸">
+            <div class="metric"><span>完成面净长</span><strong id="metric-length">6.2 <small>m</small></strong></div>
+            <div class="metric"><span>完成面净宽</span><strong id="metric-width">5.3 <small>m</small></strong></div>
+            <div class="metric"><span>目标净高</span><strong id="metric-height">2.8 <small>m</small></strong></div>
+          </div>
+          <p class="metric-footnote">6.8 m 来自图纸标注；另一向约 5.8 m 为图像推算。净尺寸及上层高度均是方案假设。</p>
+
+          <section class="detail-card" aria-labelledby="selection-heading">
+            <div class="card-heading"><span class="card-index">01</span><h3 id="selection-heading">当前查看</h3></div>
+            <div id="selection-detail"><strong>空间全景</strong><p>点击场景中的座位或音箱，查看位置与设计说明。</p></div>
+          </section>
+
+          <section class="detail-card acoustics-card" aria-labelledby="acoustics-heading">
+            <div class="card-heading"><span class="card-index">02</span><h3 id="acoustics-heading">低频驻波与座位候选区</h3></div>
+            <p class="card-intro">热图表示所选频率在耳位高度的<strong>相对响应</strong>；蓝色较低，橙色较高。点击模态频率可立即观察。</p>
+            <div id="mode-list" class="mode-list" aria-label="当前房间前几项理论模态"></div>
+            <div class="heat-legend"><span>相对低响应</span><i></i><span>相对高响应</span></div>
+            <div id="seat-zone" class="seat-zone">正在计算两排座位候选区…</div>
+            <p class="card-caveat">理想矩形刚性边界 + 两只假设低音炮的相对预测；未输入墙体损耗、设备频响或实测。候选区是搜索结果，不是现场“最佳座位”认证。</p>
+          </section>
+
+          <section class="detail-card" aria-labelledby="channel-heading">
+            <div class="card-heading"><span class="card-index">03</span><h3 id="channel-heading">声道定位</h3><span class="card-side">7 + 2 + 4 / KTV 2</span></div>
+            <div class="filter-row" role="group" aria-label="声道分组">
+              <button type="button" class="filter-button active" data-filter="all" aria-pressed="true">全部</button>
+              <button type="button" class="filter-button" data-filter="bed" aria-pressed="false">平面 7</button>
+              <button type="button" class="filter-button" data-filter="sub" aria-pressed="false">低音 2</button>
+              <button type="button" class="filter-button" data-filter="top" aria-pressed="false">顶部 4</button>
+              <button type="button" class="filter-button" data-filter="ktv" aria-pressed="false">KTV 2</button>
+            </div>
+            <div id="speaker-list" class="speaker-list"></div>
+          </section>
+
+          <section class="detail-card source-card" aria-labelledby="source-heading">
+            <div class="card-heading"><span class="card-index">04</span><h3 id="source-heading">平面与剖面示意</h3></div>
+            <button class="plan-preview" id="open-plan" type="button" aria-label="放大查看上层影院平面示意">
+              <img src="./assets/plan-diagram.svg" alt="黄色框标出拟做上层影院的范围">
+              <span>放大平面示意 ↗</span>
+            </button>
+            <button class="plan-preview section-preview" id="open-section" type="button" aria-label="放大查看平面与剖面关系示意">
+              <img src="./assets/section-diagram.svg" alt="平面与剖面关系示意，红线标示上层影院">
+              <span>放大剖面关系 ↗</span>
+            </button>
+            <p>黄色框标出影院开间，剖面中的红线标出规划的上层范围。</p>
+          </section>
+
+          <section class="detail-card decision-card" aria-labelledby="decision-heading">
+            <div class="card-heading"><span class="card-index">05</span><h3 id="decision-heading">设计取舍</h3></div>
+            <ul id="design-points">
+              <li>影院主声道位于透声幕后的候选位置，电影模式优先。</li>
+              <li>KTV 使用独立左右音箱与麦克风处理链；模式切换时单独管理两套输出。</li>
+              <li>侧环绕需兼顾两排，后排角度与覆盖仍待现场校核。</li>
+            </ul>
+          </section>
+
+          <div class="evidence-note"><strong>当前边界</strong><p>这是一份布局草案。梁底、墙体、夹层承载、门和空调路径尚未测绘；声压、隔声、KTV 反馈裕量和 RP22 等级均未验证。</p></div>
+          <footer class="source-links">布局参考：<a href="https://www.dolby.com/about/support/guide/speaker-setup-guides/7.1.4-overhead-speaker-setup-guide" target="_blank" rel="noopener noreferrer">Dolby 7.1.4 顶部音箱指南</a> · <a href="https://cedia.org/site/assets/files/6057/cedia-cta_rp22_v1_2_sept_2023.pdf" target="_blank" rel="noopener noreferrer">CEDIA/CTA-RP22</a></footer>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="plan-dialog" class="plan-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-header"><strong id="dialog-title">平面示意 · 黄色框为上层影院候选范围</strong><button type="button" id="close-plan" aria-label="关闭示意图">×</button></div>
+    <img id="dialog-image" src="./assets/plan-diagram.svg" alt="上层影院候选布局和银幕方向示意">
+    <p id="dialog-caption">平面展示候选范围、两排座位与银幕方向，具体尺寸需复尺。红线另见用户提供的左右剖面截图。</p>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
