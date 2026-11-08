@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="cinema-build" content="zhongxing-jbl-1.0">
+  <meta name="cinema-build" content="zhongxing-jbl-1.2">
   <meta name="robots" content="noindex, noarchive">
   <meta name="color-scheme" content="dark">
   <title>中星红庐香颂 · JBL 私人影院方案</title>
@@ -51,10 +51,10 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .revision { flex: 1; text-align: right; color: var(--muted); font: 14px var(--number); white-space: nowrap; }
 .revision b { color: var(--amber); }
 .revision i { display: inline-block; height: 3px; width: 3px; border-radius: 50%; background: var(--accent); vertical-align: middle; margin: 0 4px; }
-.chapters { display: flex; gap: 6px; margin-block: 12px; overflow-x: auto; scrollbar-width: thin; }
-.chapters button { flex: 1 0 auto; text-align: left; background: #101b22; }
-.chapters button[aria-current="step"] { background: #20403f; }
-.chapters small { margin-right: 6px; color: var(--accent); font: 12px var(--number); }
+.chapters { display: flex; align-items: center; gap: 8px; margin-block: 12px; }
+.chapters output { flex: none; color: var(--accent); font: 600 14px var(--number); white-space: nowrap; }
+.chapters select { min-width: 0; max-width: 390px; flex: 1; min-height: 44px; padding: 7px 8px; border: 1px solid var(--edge); border-radius: 7px; background: var(--surface); color: var(--ink); font: inherit; }
+.chapters button { flex: none; padding-inline: 10px; }
 .workspace { display: grid; grid-template-columns: minmax(0,1.8fr) minmax(345px,1fr); gap: 14px; align-items: start; }
 .scene-panel,.analysis { min-width: 0; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); }
 .scene-head { display: flex; justify-content: space-between; align-items: end; gap: 9px; padding: 15px 16px 12px; }
@@ -74,6 +74,17 @@ h1 { font-size: clamp(20px,2vw,29px); line-height: 1.2; margin-bottom: 0; }
   font: 600 12px/1.2 var(--number); padding: 4px 6px; border-radius: 4px; white-space: nowrap; transform-origin: 50% 50%;
 }
 .tag3d.current { background: #31504b; border-color: var(--accent); color: #e4fff8; }
+.dimension-overlay { display: block; width: 100%; height: 100%; overflow: hidden; }
+.measure { color: var(--accent); }
+.measure.outer { color: var(--amber); }
+.measure.marker { color: var(--ink); }
+.measure line { stroke: currentColor; stroke-width: 1.6; }
+.measure .measure-extension { stroke-dasharray: 3 3; opacity: .65; }
+.measure text {
+  fill: currentColor; stroke: #0e191f; stroke-width: 5px; stroke-linejoin: round; paint-order: stroke;
+  text-anchor: middle; dominant-baseline: middle; font: 700 14px var(--number);
+}
+.measure.marker text { font: 600 12px var(--font); }
 .viewport-top,.viewport-bottom { position: absolute; left: 12px; right: 12px; display: flex; gap: 8px; align-items: center; z-index: 3; pointer-events: none; }
 .viewport-top { top: 11px; justify-content: space-between; }
 .viewport-bottom { bottom: 9px; flex-wrap: wrap; }
@@ -85,6 +96,14 @@ h1 { font-size: clamp(20px,2vw,29px); line-height: 1.2; margin-bottom: 0; }
 .scene-loading,.scene-fallback { position: absolute; inset: 0; padding: 58px 18px 24px; display: grid; place-content: center; z-index: 1; text-align: center; }
 .scene-fallback { background: #131d24; }
 .scene-fallback img { max-width: 100%; max-height: 39vh; object-fit: contain; }
+.cover-mode .workspace { display: block; }
+.cover-mode #analysis,.cover-mode .toolbar,.cover-mode .viewport-top { display: none; }
+.cover-mode .stage { height: min(68vh,720px); }
+.report-cover { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; justify-content: end; align-items: start;
+  padding: clamp(18px,4vw,58px); background: linear-gradient(0deg,#0b1318f7 0%,#0b1318b8 31%,transparent 73%); pointer-events: none; }
+.report-cover button { pointer-events: auto; }
+.cover-title { font-size: clamp(28px,5vw,68px); font-weight: 750; line-height: 1.12; margin-bottom: 9px; }
+.cover-subtitle { margin-bottom: 18px; color: var(--ink); }
 .scene-context { border-top: 1px solid var(--edge); padding: 9px 13px; }
 .scene-context:empty { display: none; }
 .scene-context .choice-row { align-items: center; }
@@ -112,6 +131,15 @@ h1 { font-size: clamp(20px,2vw,29px); line-height: 1.2; margin-bottom: 0; }
 .facts div { display: grid; grid-template-columns: minmax(100px, .9fr) minmax(0,1.25fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--edge); }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }
+.dimension-data h3 { color: var(--accent); margin: 13px 0 4px; font-size: 14px; }
+.report-table { border-collapse: collapse; width: 100%; table-layout: auto; font-size: 13px; margin-block: 14px; }
+.report-table caption { text-align: left; color: var(--accent); margin-bottom: 5px; }
+.report-table th,.report-table td { text-align: left; vertical-align: top; padding: 7px 4px; border-bottom: 1px solid var(--edge); }
+.report-table thead th { color: var(--muted); }
+.report-table td:last-child { white-space: nowrap; }
+.report-steps { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.report-steps button { white-space: normal; text-align: left; padding-inline: 10px; }
+.report-steps small { color: var(--accent); font-family: var(--number); }
 .device-name { overflow-wrap: anywhere; }
 .phase-chart { width: 100%; height: 146px; display: block; }
 .phase-form { display: grid; gap: 8px; }
@@ -152,6 +180,9 @@ dialog p { margin: 10px 0 0; color: var(--muted); }
   .project-id strong { font-size: 14px; }
   .revision { font-size: 12px; }
   .chapters { margin-block: 8px; }
+  .chapters button { padding-inline: 6px; font-size: 12px; }
+  .chapters output { font-size: 11px; }
+  .chapters select { font-size: 12px; }
   .scene-head { align-items: start; flex-direction: column; padding: 11px 11px 8px; }
   .scene-switch button { min-height: 44px; }
   .stage { height: min(104vw,415px); min-height: 285px; }
@@ -161,6 +192,8 @@ dialog p { margin: 10px 0 0; color: var(--muted); }
   .viewport-top,.viewport-bottom { left: 8px; right: 8px; }
   .viewport-bottom span { font-size: 10px; }
   .tag3d { font-size: 10px; }
+  .measure text { font-size: 12px; }
+  .measure.marker text { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
 </style>
@@ -169,9 +202,14 @@ dialog p { margin: 10px 0 0; color: var(--muted); }
   <header class="mast">
     <div class="identity"><span class="mark" aria-hidden="true">源</span><div><b>源声视界</b><small>私人影院方案 · 刘源</small></div></div>
     <div class="project-id"><strong>中星红庐香颂</strong><span>地下影音室</span></div>
-    <span class="revision">JBL <b>7.2.4</b> <i></i> v1.0</span>
+    <span class="revision">JBL <b>7.2.4</b> <i></i> v1.2</span>
   </header>
-  <nav id="chapters" class="chapters" aria-label="方案章节"></nav>
+  <nav class="chapters" aria-label="26 页汇报导航">
+    <button id="previous-page" type="button" data-turn="-1">上一页</button>
+    <output id="page-counter" aria-live="polite">01 / 26</output>
+    <select id="page-picker" aria-label="选择汇报页面"></select>
+    <button id="next-page" type="button" data-turn="1">下一页</button>
+  </nav>
   <main class="workspace">
     <section class="scene-panel" aria-labelledby="scene-title">
       <div class="scene-head">
@@ -194,6 +232,12 @@ dialog p { margin: 10px 0 0; color: var(--muted); }
           <button type="button" id="expand" class="canvas-button" aria-pressed="false">放大</button>
         </div>
         <div class="viewport-bottom" id="legend"><span><i class="legend-front"></i> 影院声道</span><span><i class="legend-sub"></i> 双低音炮</span><span><i class="legend-ktv"></i> KTV</span></div>
+        <div id="cover" class="report-cover" hidden>
+          <p class="eyebrow">源声视界 · 私人影院系统设计方案</p>
+          <p class="cover-title">中星红庐香颂</p>
+          <p class="cover-subtitle">JBL 7.2.4 全景声影院 · 150 英寸透声幕</p>
+          <button type="button" data-jump="experience">开始汇报</button>
+        </div>
       </div>
       <div id="scene-context" class="scene-context" aria-live="polite"></div>
       <div class="toolbar">
@@ -211,12 +255,12 @@ dialog p { margin: 10px 0 0; color: var(--muted); }
     <aside id="analysis" class="analysis" aria-labelledby="chapter-title"></aside>
   </main>
   <footer class="footer">
-    <span><b>中星红庐香颂</b> · 设计确认版 v0.2 / 交互 v1.0</span>
+    <span><b>中星红庐香颂</b> · 设计确认版 v0.2 / 交互 v1.2</span>
     <span>方案几何与调试流程 · 现场数值待安装后复测</span>
     <details id="sources"><summary>资料依据</summary><div id="source-content"></div></details>
   </footer>
   <noscript><p class="no-script">请启用 JavaScript 查看交互方案。</p></noscript>
-  <script id="project-data" type="application/json">{"project":"中星红庐香颂","version":"v0.2","room":{"width":4960,"mainDepth":6110,"nicheDepth":6710,"ceiling":2350,"recessedCeiling":2500,"ceilingRecess":{"front":450,"back":3660,"halfWidth":2130},"originalPlatformHeight":150,"outline":[[2480,0],[-2480,0],[-2480,1250],[-2731,1250],[-3380,1899],[-3380,3360],[-2731,4010],[-2480,4010],[-2480,6110],[20,6110],[20,6710],[2480,6710]],"door":{"x":2480,"yStart":1270,"width":900,"swing":"inward"},"cabinetRight":{"xMin":-2480,"xMax":-2120,"yMin":4250,"yMax":6110},"cabinetRear":{"xMin":20,"xMax":2480,"yMin":6110,"yMax":6710}},"screen":{"model":"PIER K150PHA65","diagonalInch":150,"ratio":[16,9],"outerWidth":3450,"outerHeight":1998,"x":0,"y":200,"outerBottom":315,"openingAllowancePerEdge":20,"originalZone":{"width":3340,"height":1900,"bottom":300}},"seats":{"seatWidth":1000,"seatDepth":950,"eyeOffset":700,"eyeZ":1150,"headZ":1270,"row1":{"xCenter":0,"yFront":3200,"platform":0},"row2":{"xCenter":0,"yFront":4610,"platform":150}},"platform":{"front":4270,"back":6110,"xMin":-2120,"xMax":2480,"height":150,"stepDepth":280,"leftStepWidth":940,"rightStepWidth":600},"projector":{"model":"Sony VPL-XW5100","x":0,"lensY":5400,"lensZ":2160,"widthEnvelope":500,"heightEnvelope":210,"depthEnvelope":520,"throwRange":[4600,7360]},"speakers":[{"id":"L","type":"lcr","x":1530,"y":125,"z":1130},{"id":"C","type":"lcr","x":0,"y":125,"z":1130},{"id":"R","type":"lcr","x":-1530,"y":125,"z":1130},{"id":"SL","type":"surround","x":2460,"y":4090,"z":1610},{"id":"SR","type":"surround","x":-2460,"y":4160,"z":1610},{"id":"SBL","type":"surround","x":1450,"y":6080,"z":1710},{"id":"SBR","type":"surround","x":-1450,"y":6080,"z":1710},{"id":"TFL","type":"top","x":1150,"y":2600,"z":2500},{"id":"TFR","type":"top","x":-1150,"y":2600,"z":2500},{"id":"TRL","type":"top","x":1150,"y":5650,"z":2350},{"id":"TRR","type":"top","x":-1150,"y":5650,"z":2350},{"id":"SW1","type":"sub","x":1960,"y":760,"z":210},{"id":"SW2","type":"sub","x":-1825,"y":5785,"z":360},{"id":"K-L","type":"ktv","x":2160,"y":330,"z":1710},{"id":"K-R","type":"ktv","x":-2160,"y":330,"z":1710}],"equipment":{"lcr":{"model":"JBL Studio 6 Theater","cutWidth":157,"cutHeight":642,"grilleWidth":188,"grilleHeight":674,"mountDepth":94.5},"surround":{"model":"JBL 6 8IW","cutWidth":221,"cutHeight":318,"mountDepth":94.5},"top":{"model":"JBL 280CSA","cutWidth":260,"cutHeight":260,"mountDepth":139},"sub":{"model":"JBL S660","width":420,"depth":420,"height":420},"ktv":{"model":"JBL KP4012-WH","width":360,"depth":382,"height":600},"control":{"model":"F200 2T","x":-2390,"y":1040},"rack":{"location":"优先与弱电/设备间协调","status":"位置、供电、散热和维修条件待确认"},"extraSubPrewire":[{"x":-1840,"y":695},{"x":1840,"y":5785}]},"approvedDate":"2026-11-06","baselineSha256":"33428a6fb78ace39eb6e25be1b4f9abe232517d62bce66499cd41412bce16700","links":{"sony":"https://helpguide.sony.net/vpl/xw8100/v1/en/contents/TP1001689574.html","jbl":"https://support.jbl.com/on/demandware.static/-/Sites-masterCatalog_Harman/default/dw98cd0d96/pdfs/SpecSheet_JBL_Studio_6_Architectural_rev6_20221208_EN.pdf","denon":"https://www.denon.com/en-us/product/av-receivers/avr-x4800h/300608.html","dolby":"https://www.dolby.com/about/support/guide/speaker-setup-guides/7.1.4-overhead-speaker-setup-guide","rew":"https://www.roomeqwizard.com/help/help_en-GB/html/gettingstarted.html"},"publicEdition":true,"budgetText":"影音设备及安装调试单列。装修和座椅另计，金额与分工以正式报价和合同为准。","fallbackPlan":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9Ii0yODIwIC00MDAgNjU1MCA3NDcwIj4KICAgIDxyZWN0IHg9Ii0yODIwIiB5PSItNDAwIiB3aWR0aD0iNjU1MCIgaGVpZ2h0PSI3NDcwIiBmaWxsPSIjMTQyMzJhIi8+CiAgICA8cG9seWdvbiBwb2ludHM9Ii0yNDgwLDAgMjQ4MCwwIDI0ODAsMTI1MCAyNzMxLDEyNTAgMzM4MCwxODk5IDMzODAsMzM2MCAyNzMxLDQwMTAgMjQ4MCw0MDEwIDI0ODAsNjExMCAtMjAsNjExMCAtMjAsNjcxMCAtMjQ4MCw2NzEwIiBmaWxsPSIjMmEzNzNiIiBzdHJva2U9IiM4ZTllOWUiIHN0cm9rZS13aWR0aD0iNDAiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSI0MjcwIiB3aWR0aD0iNDYwMCIgaGVpZ2h0PSIxODQwIiByeD0iNDAiIGZpbGw9IiM0NTQ5NGEiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSIzOTkwIiB3aWR0aD0iOTQwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSIxNTIwIiB5PSIzOTkwIiB3aWR0aD0iNjAwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSItMTcyNSIgeT0iMjAwIiB3aWR0aD0iMzQ1MCIgaGVpZ2h0PSI2NSIgcng9IjQwIiBmaWxsPSIjNzZkZmNiIi8+CiAgICA8cmVjdCB4PSItMTQ2MCIgeT0iMzIwMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2I2OWE3ZiIvPjxyZWN0IHg9Ii00NjAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSI1NDAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSItMTQ2MCIgeT0iNDYxMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2RlZDNjMSIvPjxyZWN0IHg9Ii00NjAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz48cmVjdCB4PSI1NDAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz4KICAgIDx0ZXh0IHg9IjAiIHk9IjY5MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMTAiIGZpbGw9IiNmMGYyZWUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIj4xNTDigLM8L3RleHQ+CiAgPC9zdmc+"}</script>
+  <script id="project-data" type="application/json">{"project":"中星红庐香颂","version":"v0.2","edition":"v1.2","room":{"width":4960,"mainDepth":6110,"nicheDepth":6710,"ceiling":2350,"recessedCeiling":2500,"ceilingRecess":{"front":450,"back":3660,"halfWidth":2130},"originalPlatformHeight":150,"outline":[[2480,0],[-2480,0],[-2480,1250],[-2731,1250],[-3380,1899],[-3380,3360],[-2731,4010],[-2480,4010],[-2480,6110],[20,6110],[20,6710],[2480,6710]],"door":{"x":2480,"yStart":1270,"width":900,"swing":"inward"},"cabinetRight":{"xMin":-2480,"xMax":-2120,"yMin":4250,"yMax":6110},"cabinetRear":{"xMin":20,"xMax":2480,"yMin":6110,"yMax":6710}},"screen":{"model":"PIER K150PHA65","diagonalInch":150,"ratio":[16,9],"outerWidth":3450,"outerHeight":1998,"x":0,"y":200,"outerBottom":315,"openingAllowancePerEdge":20,"originalZone":{"width":3340,"height":1900,"bottom":300}},"seats":{"seatWidth":1000,"seatDepth":950,"eyeOffset":700,"eyeZ":1150,"headZ":1270,"row1":{"xCenter":0,"yFront":3200,"platform":0},"row2":{"xCenter":0,"yFront":4610,"platform":150}},"platform":{"front":4270,"back":6110,"xMin":-2120,"xMax":2480,"height":150,"stepDepth":280,"leftStepWidth":940,"rightStepWidth":600},"projector":{"model":"Sony VPL-XW5100","x":0,"lensY":5400,"lensZ":2160,"widthEnvelope":500,"heightEnvelope":210,"depthEnvelope":520,"throwRange":[4600,7360]},"speakers":[{"id":"L","type":"lcr","x":1530,"y":125,"z":1130},{"id":"C","type":"lcr","x":0,"y":125,"z":1130},{"id":"R","type":"lcr","x":-1530,"y":125,"z":1130},{"id":"SL","type":"surround","x":2460,"y":4090,"z":1610},{"id":"SR","type":"surround","x":-2460,"y":4160,"z":1610},{"id":"SBL","type":"surround","x":1450,"y":6080,"z":1710},{"id":"SBR","type":"surround","x":-1450,"y":6080,"z":1710},{"id":"TFL","type":"top","x":1150,"y":2600,"z":2500},{"id":"TFR","type":"top","x":-1150,"y":2600,"z":2500},{"id":"TRL","type":"top","x":1150,"y":5650,"z":2350},{"id":"TRR","type":"top","x":-1150,"y":5650,"z":2350},{"id":"SW1","type":"sub","x":1960,"y":760,"z":210},{"id":"SW2","type":"sub","x":-1825,"y":5785,"z":360},{"id":"K-L","type":"ktv","x":2160,"y":330,"z":1710},{"id":"K-R","type":"ktv","x":-2160,"y":330,"z":1710}],"equipment":{"lcr":{"model":"JBL Studio 6 Theater","cutWidth":157,"cutHeight":642,"grilleWidth":188,"grilleHeight":674,"mountDepth":94.5},"surround":{"model":"JBL 6 8IW","cutWidth":221,"cutHeight":318,"mountDepth":94.5},"top":{"model":"JBL 280CSA","cutWidth":260,"cutHeight":260,"mountDepth":139},"sub":{"model":"JBL S660","width":420,"depth":420,"height":420},"ktv":{"model":"JBL KP4012-WH","width":360,"depth":382,"height":600},"control":{"model":"F200 2T","x":-2390,"y":1040},"rack":{"location":"优先与弱电/设备间协调","status":"位置、供电、散热和维修条件待确认"},"extraSubPrewire":[{"x":-1840,"y":695},{"x":1840,"y":5785}]},"approvedDate":"2026-11-06","baselineSha256":"33428a6fb78ace39eb6e25be1b4f9abe232517d62bce66499cd41412bce16700","links":{"sony":"https://helpguide.sony.net/vpl/xw8100/v1/en/contents/TP1001689574.html","jbl":"https://support.jbl.com/on/demandware.static/-/Sites-masterCatalog_Harman/default/dw98cd0d96/pdfs/SpecSheet_JBL_Studio_6_Architectural_rev6_20221208_EN.pdf","denon":"https://www.denon.com/en-us/product/av-receivers/avr-x4800h/300608.html","dolby":"https://www.dolby.com/about/support/guide/speaker-setup-guides/7.1.4-overhead-speaker-setup-guide","rew":"https://www.roomeqwizard.com/help/help_en-GB/html/gettingstarted.html"},"publicEdition":true,"budgetText":"影音设备及安装调试单列。装修和座椅另计，金额与分工以正式报价和合同为准。","fallbackPlan":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9Ii0yODIwIC00MDAgNjU1MCA3NDcwIj4KICAgIDxyZWN0IHg9Ii0yODIwIiB5PSItNDAwIiB3aWR0aD0iNjU1MCIgaGVpZ2h0PSI3NDcwIiBmaWxsPSIjMTQyMzJhIi8+CiAgICA8cG9seWdvbiBwb2ludHM9Ii0yNDgwLDAgMjQ4MCwwIDI0ODAsMTI1MCAyNzMxLDEyNTAgMzM4MCwxODk5IDMzODAsMzM2MCAyNzMxLDQwMTAgMjQ4MCw0MDEwIDI0ODAsNjExMCAtMjAsNjExMCAtMjAsNjcxMCAtMjQ4MCw2NzEwIiBmaWxsPSIjMmEzNzNiIiBzdHJva2U9IiM4ZTllOWUiIHN0cm9rZS13aWR0aD0iNDAiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSI0MjcwIiB3aWR0aD0iNDYwMCIgaGVpZ2h0PSIxODQwIiByeD0iNDAiIGZpbGw9IiM0NTQ5NGEiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSIzOTkwIiB3aWR0aD0iOTQwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSIxNTIwIiB5PSIzOTkwIiB3aWR0aD0iNjAwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSItMTcyNSIgeT0iMjAwIiB3aWR0aD0iMzQ1MCIgaGVpZ2h0PSI2NSIgcng9IjQwIiBmaWxsPSIjNzZkZmNiIi8+CiAgICA8cmVjdCB4PSItMTQ2MCIgeT0iMzIwMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2I2OWE3ZiIvPjxyZWN0IHg9Ii00NjAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSI1NDAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSItMTQ2MCIgeT0iNDYxMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2RlZDNjMSIvPjxyZWN0IHg9Ii00NjAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz48cmVjdCB4PSI1NDAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz4KICAgIDx0ZXh0IHg9IjAiIHk9IjY5MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMTAiIGZpbGw9IiNmMGYyZWUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIj4xNTDigLM8L3RleHQ+CiAgPC9zdmc+"}</script>
   <script>const T=(()=>{
 /**
  * @license
@@ -54431,7 +54475,56 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     return { lagDeg, sum, vector2:[Math.cos(lag),-Math.sin(lag)], magnitude,
       levelDb:magnitude < 1e-6 ? null : 20*Math.log10(magnitude) };
   }
-  return { seatPoints,imageSize,viewing,speakerAngle,bassGeometry,bassSum,round };
+  function dimensionMarks({room,platform,screen},picture) {
+    const half=room.width/2, recess=room.ceilingRecess;
+    const outerTop=screen.outerBottom+screen.outerHeight;
+    const left=width=>screen.x+width/2, right=width=>screen.x-width/2;
+    const plane=(x,z)=>[x,screen.y,z];
+    const rightWall=Math.min(...room.outline.map(([x])=>x));
+    const mm=value=>`${value} mm`;
+    return {
+      room:{
+        lines:[
+          {id:'width',text:mm(room.width),from:[half,0,0],to:[-half,0,0],offset:[0,-430,0]},
+          {id:'main-depth',text:mm(room.mainDepth),from:[-half,0,0],to:[-half,room.mainDepth,0],
+            offset:[rightWall+half-350,0,0],rotate:true},
+          {id:'rear-depth',text:mm(room.nicheDepth),from:[half,0,0],to:[half,room.nicheDepth,0],
+            offset:[460,0,0],rotate:true},
+        ],
+        labels:[
+          {id:'left-step',text:'左踏步',at:[platform.xMax-platform.leftStepWidth/2,platform.front-platform.stepDepth/2,platform.height]},
+          {id:'right-step',text:'右踏步',at:[platform.xMin+platform.rightStepWidth/2,platform.front-platform.stepDepth/2,platform.height]},
+        ],
+      },
+      platform:{
+        lines:[
+          {id:'ceiling',text:mm(room.ceiling),from:[0,0,0],to:[0,0,room.ceiling],offset:[0,-410,0],rotate:true},
+          {id:'recess',text:mm(room.recessedCeiling),from:[0,recess.front,0],to:[0,recess.front,room.recessedCeiling],
+            offset:[0,460,0],rotate:true},
+          {id:'riser',text:`+${mm(platform.height)}`,from:[0,platform.front,0],to:[0,platform.front,platform.height],
+            offset:[0,650,0],lift:23},
+        ],
+        labels:[
+          {id:'zero',text:'前排地面 ±0',at:[0,2250,0],lift:-14},
+          {id:'step-edge',text:'踏步前缘',at:[0,platform.front-platform.stepDepth,0],lift:16},
+        ],
+      },
+      screen:{
+        lines:[
+          {id:'outer-width',text:mm(screen.outerWidth),from:plane(left(screen.outerWidth),outerTop),to:plane(right(screen.outerWidth),outerTop),
+            offset:[0,0,320],tone:'outer'},
+          {id:'outer-height',text:mm(screen.outerHeight),from:plane(left(screen.outerWidth),screen.outerBottom),to:plane(left(screen.outerWidth),outerTop),
+            offset:[360,0,0],rotate:true,tone:'outer'},
+          {id:'active-width',text:mm(picture.width),from:plane(left(picture.width),picture.bottom),to:plane(right(picture.width),picture.bottom),
+            offset:[0,0,-330]},
+          {id:'active-height',text:mm(picture.height),from:plane(right(picture.width),picture.bottom),to:plane(right(picture.width),picture.top),
+            offset:[-360,0,0],rotate:true},
+        ],
+        labels:[],
+      },
+    };
+  }
+  return { seatPoints,imageSize,viewing,speakerAngle,bassGeometry,bassSum,dimensionMarks,round };
 })();
 </script>
   <script>const CinemaScene = (() => {
@@ -54482,7 +54575,8 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     const footlight = glow(0xffd09a);
     const brass = paint(0xb8955d,{metalness:.55,roughness:.44});
     const upperCabinets = new T.Group();
-    scene.add(upperCabinets);
+    const lowerCabinets = new T.Group();
+    scene.add(upperCabinets,lowerCabinets);
     const guide = new T.Group();
     const sceneLabels = [];
     const hitTargets = [];
@@ -54490,6 +54584,10 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     const sharedRounded = roundedRectangle();
     const allSeats = CinemaMath.seatPoints(d.seats);
     const image = CinemaMath.imageSize(d.screen);
+    const dimensions=CinemaMath.dimensionMarks(d,image);
+    const sizeOverlay=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    sizeOverlay.classList.add('dimension-overlay');
+    hud.append(sizeOverlay);
 
     function floorTexture() {
       const image=document.createElement('canvas');
@@ -54619,11 +54717,12 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
         ? [[[door.x,Math.max(a[1],b[1])],[door.x,door.yStart+door.width]],[[door.x,door.yStart],[door.x,Math.min(a[1],b[1])]]]
         : [[a,b]];
       spans.forEach(([start,end]) => {
-        wallSegment(start,end,315,wallMat,0,90,scene,true);
+        const base=wallSegment(start,end,315,wallMat,0,90,scene,true);
         const run=Math.hypot(end[0]-start[0],end[1]-start[1]);
         const mat=paint(0x62534e,{map:panelTexture(Math.max(1,Math.round(run/760)))});
         const wall=wallSegment(start,end,d.room.ceiling-315,mat,315,90,tallWalls,true);
-        wallFinishes.push({wall, far:(start[0]+end[0])/2>700||(start[1]+end[1])/2<60});
+        const front=(start[1]+end[1])/2<60;
+        wallFinishes.push({wall,base,front,far:(start[0]+end[0])/2>700||front});
       });
     }
     scene.add(tallWalls);
@@ -54632,11 +54731,10 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     doorLeaf.name='Door open envelope (illustrative)';
     const doorClosed = mesh([door.x+15,door.yStart+door.width/2,1075],[40,door.width-16,2150],cabinetFace);
     doorClosed.visible=false;
-    mesh([door.x-35,door.yStart,1075],[70,95,2150],wallMat);
-    mesh([door.x-35,door.yStart+door.width,1075],[70,95,2150],wallMat);
+    const jambs=[door.yStart,door.yStart+door.width].map(y=>mesh([door.x-35,y,1075],[70,95,2150],wallMat));
     const cabinet = (spec,rear) => {
       const cx=(spec.xMax+spec.xMin)/2, cy=(spec.yMax+spec.yMin)/2;
-      mesh([cx,cy,475],[spec.xMax-spec.xMin,spec.yMax-spec.yMin,950],cabinetMat);
+      mesh([cx,cy,475],[spec.xMax-spec.xMin,spec.yMax-spec.yMin,950],cabinetMat,lowerCabinets);
       mesh([cx,cy,1945],[spec.xMax-spec.xMin,spec.yMax-spec.yMin,730],cabinetMat,upperCabinets);
       mesh([rear?cx:spec.xMin+18,rear?spec.yMax-18:cy,1260],
         rear?[spec.xMax-spec.xMin,36,620]:[36,spec.yMax-spec.yMin,620],cabinetMat,upperCabinets);
@@ -54646,9 +54744,9 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
         const x=rear?spec.xMin+(i+.5)*(spec.xMax-spec.xMin)/3:spec.xMax+4;
         const y=rear?spec.yMin-4:spec.yMin+(i+.5)*(spec.yMax-spec.yMin)/3;
         const dims=rear?[(spec.xMax-spec.xMin)/3-17,13,850]:[13,(spec.yMax-spec.yMin)/3-17,850];
-        mesh([x,y,495],dims,cabinetFace);
+        mesh([x,y,495],dims,cabinetFace,lowerCabinets);
         mesh([x,y,1945],[dims[0],dims[1],650],cabinetFace,upperCabinets);
-        mesh([x+(rear?-124:11),y+(rear?-11:108),788],[13,15,118],brass);
+        mesh([x+(rear?-124:11),y+(rear?-11:108),788],[13,15,118],brass,lowerCabinets);
         mesh([x+(rear?-124:11),y+(rear?-11:108),1780],[13,15,118],brass,upperCabinets);
       }
     };
@@ -54782,7 +54880,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       const dz=s.type==='top'?90:s.type==='sub'?270:s.type==='ktv'?335:s.type==='lcr'?430:205;
       label(s.id,[s.x,s.y,s.z+dz],s.type);
     }
-    mesh([d.equipment.control.x,d.equipment.control.y,1040],[57,295,364],deviceMat);
+    const control=mesh([d.equipment.control.x,d.equipment.control.y,1040],[57,295,364],deviceMat);
     scene.add(guide);
 
     const orbitTarget=new T.Vector3(0,.8,3.2);
@@ -54799,6 +54897,11 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       front:[[.05,2.15,6.8],[0,1.21,.21]],
       side:[[10.25,2.32,3.10],[0,1.17,3.10]],
     };
+    const sizeCameras={
+      'size-plan':{mode:'room',target:[.41,0,3.15],axis:[0,1,.0001],span:[8.6,8.7]},
+      'size-side':{mode:'platform',target:[0,.95,3.06],axis:[-1,0,0],span:[8.6,4.25]},
+      'size-front':{mode:'screen',target:[0,1.32,.2],axis:[0,0,1],span:[5.4,3.8]},
+    };
 
     function schedule() {
       if(!raf&&!destroyed) raf=requestAnimationFrame(render);
@@ -54810,11 +54913,19 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       camera.aspect=width/height;
       camera.updateProjectionMatrix();
       renderer.setSize(width,height,false);
-      schedule();
+      if(sizeCameras[viewKey]) setView(viewKey,false);
+      else schedule();
     }
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     function targetCamera(key) {
+      const size=sizeCameras[key];
+      if(size) {
+        const [w,h]=size.span;
+        const distance=Math.max(h,w/camera.aspect)/(2*Math.tan(camera.fov*Math.PI/360));
+        const target=new T.Vector3(...size.target);
+        return [new T.Vector3(...size.axis).multiplyScalar(distance).add(target),target];
+      }
       if(key==='eye') {
         const seat=allSeats.find(s=>s.id===state.seat);
         const pos=world(seat.eye);
@@ -54828,25 +54939,61 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       return [pos,target];
     }
     function setView(key,animate=true) {
+      const dimensionTransition=Boolean(sizeCameras[key]||sizeCameras[viewKey]);
       viewKey=key;
-      camera.fov=key==='decor'?(width/height<1.25?77:62):43;
+      camera.fov=sizeCameras[key]?12:key==='decor'?(width/height<1.25?77:62):43;
+      camera.far=sizeCameras[key]?150:55;
       camera.updateProjectionMatrix();
       setFinish(key);
       const [pos,look]=targetCamera(key);
-      const instant=!animate||reduced.matches||first;
+      const instant=!animate||reduced.matches||first||dimensionTransition;
       if(instant) { tween=null; camera.position.copy(pos); orbitTarget.copy(look); }
       else tween={start:performance.now(),from:camera.position.clone(),to:pos,targetFrom:orbitTarget.clone(),targetTo:look};
       camera.lookAt(orbitTarget);
       schedule();
     }
     function labelVisible(item) {
-      if(!state.labels || viewKey==='eye'||viewKey==='decor') return false;
-      if(item.kind==='seat') return state.chapter==='seats'||state.chapter==='tuning';
+      if(!state.labels || viewKey==='eye'||viewKey==='decor'||sizeCameras[viewKey]) return false;
+      if(item.kind==='seat') return ['seats','tuning','seating','angles'].includes(state.chapter);
       if(item.kind==='projector') return state.chapter==='projection';
+      if(state.chapter==='sequence') return item.kind!=='ktv'&&(state.sequenceGroup==='all'||item.kind===state.sequenceGroup);
+      if(state.chapter==='angles') return item.id==='L'||item.id==='R';
       if(state.chapter==='channels') return item.kind!=='ktv';
       if(state.chapter==='bass') return item.kind==='sub';
       if(state.chapter==='handover') return state.system==='ktv'?item.kind==='ktv':item.kind==='lcr';
       return item.kind==='sub'||item.kind==='top';
+    }
+    function dimensionSet() {
+      const size=sizeCameras[viewKey];
+      return state.chapter==='dimensions'&&state.labels&&size ? dimensions[size.mode] : null;
+    }
+    function renderDimensions() {
+      const set=dimensionSet();
+      if(!set) { sizeOverlay.replaceChildren(); return; }
+      sizeOverlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
+      const xy=point=>{
+        projected.copy(world(point)).project(camera);
+        return [(projected.x*.5+.5)*width,(.5-projected.y*.5)*height];
+      };
+      const segment=(a,b,kind)=>`<line class="${kind}" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
+      const text=(value,x,y,rotate=false)=>`<text x="${x}" y="${y}"${rotate?` transform="rotate(-90 ${x} ${y})"`:''}>${value}</text>`;
+      const lineMarkup=set.lines.map(mark=>{
+        const shift=point=>point.map((v,i)=>v+mark.offset[i]);
+        const a=xy(shift(mark.from)), b=xy(shift(mark.to));
+        const horizontal=Math.abs(b[0]-a[0])>Math.abs(b[1]-a[1]);
+        const tick=([x,y])=>horizontal?segment([x,y-4],[x,y+4],'measure-tick'):segment([x-4,y],[x+4,y],'measure-tick');
+        const x=(a[0]+b[0])/2+(mark.rotate?-10:0), y=(a[1]+b[1])/2-(mark.lift??(horizontal?10:0));
+        const leader=mark.lift?segment([(a[0]+b[0])/2,y+8],[(a[0]+b[0])/2,(a[1]+b[1])/2],'measure-extension'):'';
+        return `<g class="measure ${mark.tone??''}" data-measure="${mark.id}">${segment(xy(mark.from),a,'measure-extension')}
+          ${segment(xy(mark.to),b,'measure-extension')}${segment(a,b,'measure-line')}${tick(a)}${tick(b)}${leader}
+          ${text(mark.text,x,y,mark.rotate)}</g>`;
+      });
+      const labelMarkup=set.labels.map(mark=>{
+        const [x,y]=xy(mark.at), labelY=y+(mark.lift??0);
+        return `<g class="measure marker" data-measure="${mark.id}">${mark.lift?segment([x,y],[x,labelY-7*Math.sign(mark.lift)],'measure-extension'):''}
+          ${text(mark.text,x,labelY)}</g>`;
+      });
+      sizeOverlay.innerHTML=lineMarkup.concat(labelMarkup).join('');
     }
     function render(now) {
       raf=0;
@@ -54861,6 +55008,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       }
       renderer.render(scene,camera);
       camera.updateMatrixWorld();
+      renderDimensions();
       for(const item of sceneLabels) {
         if(!labelVisible(item)) {item.el.hidden=true;continue;}
         projected.copy(item.point).project(camera);
@@ -54880,51 +55028,84 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     }
     function setFinish(key) {
       const interior=['eye','decor'].includes(key);
+      const frontOnly=key==='size-front';
+      const section=key==='size-side';
       roofSolid.visible=interior;
-      doorLeaf.visible=!interior;
+      doorLeaf.visible=!interior&&!frontOnly&&!section;
       doorClosed.visible=interior;
-      tallWalls.visible=key!=='plan';
+      tallWalls.visible=!['plan','size-plan','size-side'].includes(key);
       upperCabinets.visible=interior;
-      for(const item of wallFinishes)item.wall.visible=interior||item.far;
+      lowerCabinets.visible=!frontOnly;
+      projector.visible=!frontOnly&&!section;
+      control.visible=!section;
+      for(const jamb of jambs) jamb.visible=!frontOnly&&!section;
+      for(const item of model.seats.values()) item.anchor.visible=!frontOnly;
+      for(const item of model.channels.values()) item.anchor.visible=!frontOnly&&!section;
+      for(const item of wallFinishes) {
+        item.wall.visible=frontOnly?item.front:interior||item.far;
+        item.base.visible=!section&&(!frontOnly||item.front);
+      }
+      roof.visible=state.roof||key==='size-side';
     }
     function applyState(next,{move=false}={}) {
       state={...next};
       screenImage.visible=!state.screen;
-      roof.visible=state.roof;
       setFinish(move?state.view:viewKey);
       const seat=allSeats.find(s=>s.id===state.seat);
       const focused=s=> {
-        if(state.chapter==='channels') return s.id===state.channel;
-        if(state.chapter==='bass') return s.type==='sub';
+        if(state.chapter==='channels') return state.detail?s.id===state.channel:s.type!=='ktv';
+        if(state.chapter==='sequence') return s.type!=='ktv'&&(state.sequenceGroup==='all'||s.type===state.sequenceGroup);
+        if(state.chapter==='angles') return s.type==='lcr'&&s.id!=='C';
+        if(state.chapter==='bass') return s.type==='sub'&&(state.bassMode==='dual'||s.id==='SW1');
+        if(state.chapter==='routing') return s.type==='sub';
         if(state.chapter==='handover') return state.system==='ktv'?s.type==='ktv':s.type!=='ktv';
         if(state.chapter==='tuning') return state.step===1?s.type==='sub':state.step<4?s.type!=='ktv':false;
         return false;
       };
+      const emphasized=d.speakers.filter(focused).map(s=>s.id);
       for(const s of d.speakers) {
         const record=model.channels.get(s.id);
-        const on=focused(s);
+        const on=emphasized.includes(s.id);
         const interior=state.view==='decor'||state.view==='eye';
-        record.detail.color.setHex(interior?0x414446:on?colors.selected:record.color);
-        record.detail.emissiveIntensity=interior?0:on?.73:.13;
+        record.detail.color.setHex(interior?0x414446:on?colors.selected:state.chapter==='sequence'?colors.dim:record.color);
+        record.detail.emissiveIntensity=interior?0:on?.73:state.chapter==='sequence'?0:.13;
       }
-      for(const [id,s] of model.seats) s.ring.visible=['seats','bass','tuning'].includes(state.chapter)&&id===state.seat&&state.view!=='eye';
+      for(const [id,s] of model.seats) s.ring.visible=['seats','bass','tuning','angles','seating'].includes(state.chapter)&&id===state.seat&&state.view!=='eye';
       headGroup.visible=state.chapter==='seats'&&state.heads&&seat.row===2;
-      for(const item of sceneLabels) item.el.classList.toggle('current',item.id===state.channel||item.id===state.seat);
+      for(const item of sceneLabels) item.el.classList.toggle('current',emphasized.includes(item.id)||item.id===state.seat);
       clearGuides();
-      if(state.chapter==='channels') {
+      if(state.chapter==='channels'&&state.detail) {
         const s=d.speakers.find(a=>a.id===state.channel);
         line([[s.x,s.y,s.z],seat.eye],0x90efd9,guide,true);
+      } else if(state.chapter==='angles') {
+        for(const s of d.speakers.filter(s=>s.id==='L'||s.id==='R'))
+          line([[s.x,s.y,seat.eye[2]],seat.eye],0x90efd9,guide,true);
+      } else if(state.chapter==='seating') {
+        const [x,y,z]=seat.eye;
+        line([[x,0,z],seat.eye,[x,y,0]],0x90efd9,guide,true);
       } else if(state.chapter==='seats'&&state.view!=='eye') {
         for(const ray of CinemaMath.viewing(seat,d.screen,image,allSeats).rays) {
           line([seat.eye,ray.end],ray.obstruction?0xff9d83:0x8fdcca,guide,true);
         }
       } else if(state.chapter==='bass') {
-        for(const [i,s] of d.speakers.filter(s=>s.type==='sub').entries())
+        for(const [i,s] of d.speakers.filter(focused).entries())
           line([[s.x,s.y,s.z],seat.eye],i?0xf1bc78:0x87bdff,guide,true);
       } else if(state.chapter==='projection') {
         for(const x of [-image.width/2,image.width/2]) for(const z of [image.bottom,image.top])
           line([[pj.x,pj.lensY,pj.lensZ],[d.screen.x+x,d.screen.y,z]],0x89c5d7,guide,true);
         line([[pj.x,pj.lensY,pj.lensZ],[d.screen.x,d.screen.y,image.center]],0xf5ce85,guide,true);
+      } else if(state.chapter==='acoustics') {
+        const {width,mainDepth,ceiling,ceilingRecess}=d.room;
+        const half=width/2, x=Math.min(half-120,ceilingRecess.halfWidth);
+        const zones={
+          front:[[[-half,220,630],[half,220,630]], [[-half+180,220,50],[-half+180,220,ceiling]], [[half-180,220,50],[half-180,220,ceiling]]],
+          side:[-1,1].map(sign=>[[sign*half,1200,1100],[sign*half,3800,1100]]),
+          rear:[[[-half+120,mainDepth-110,1450],[half-120,mainDepth-110,1450]]],
+          ceiling:[[[-x,ceilingRecess.front,ceiling],[x,ceilingRecess.front,ceiling],[x,ceilingRecess.back,ceiling],
+            [-x,ceilingRecess.back,ceiling],[-x,ceilingRecess.front,ceiling]],
+          [[d.platform.xMin,d.platform.front,d.platform.height],[d.platform.xMax,d.platform.front,d.platform.height]]],
+        };
+        for(const points of zones[state.zone]) line(points,0xf3c47e,guide,true);
       }
       if(move) {
         setView(state.view);
@@ -54935,6 +55116,12 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     let down=null, moved=false, lastSpan=0;
     function manual() {
       if(tween) tween=null;
+      if(sizeCameras[viewKey]) {
+        const ratio=Math.tan(camera.fov*Math.PI/360)/Math.tan(43*Math.PI/360);
+        camera.position.sub(orbitTarget).multiplyScalar(ratio).add(orbitTarget);
+        camera.fov=43; camera.far=55;
+        camera.updateProjectionMatrix();
+      }
       viewKey='orbit';
       setFinish(viewKey);
       handlers.onManual();
@@ -54967,7 +55154,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     });
     canvas.addEventListener('pointerup',e=>{
       pointers.delete(e.pointerId);
-      if(!moved&&down&&!pointers.size) {
+      if(!moved&&down&&!pointers.size&&!sizeCameras[viewKey]) {
         const r=canvas.getBoundingClientRect();
         mouse.set((e.clientX-r.left)/r.width*2-1,1-(e.clientY-r.top)/r.height*2);
         raycaster.setFromCamera(mouse,camera);
@@ -54994,6 +55181,10 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       revision:T.REVISION, view:viewKey, screenOpaque:screenImage.visible, roof:roof.visible, heads:headGroup.visible, decor:roofSolid.visible,
       camera:camera.position.toArray(), target:orbitTarget.toArray(), drawCalls:renderer.info.render.calls,
       pixels:[canvas.width,canvas.height],
+      dimensions:dimensionSet(),
+      lowerCabinetsVisible:lowerCabinets.visible,
+      emphasized:d.speakers.filter(s=>model.channels.get(s.id).detail.emissiveIntensity===.73).map(s=>s.id),
+      guideCount:guide.children.length,
       channels:[...model.channels].map(([id,obj])=>({id,world:obj.anchor.position.toArray()})),
       seats:[...model.seats].map(([id,obj])=>({id,world:obj.anchor.position.toArray()})),
       steps:model.steps.map(s=>({name:s.name,world:s.position.toArray(),height:s.scale.y})),
@@ -55003,21 +55194,160 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
   return { create };
 })();
 </script>
+  <script>const CinemaReport = (() => {
+  // The order follows JBL V13.1. Equipment and values come from this room.
+  const chapters=[
+    ['overview','封面','JBL 7.2.4 私人影院','overview'],
+    ['experience','使用体验','我们希望带给您的体验','decor'],
+    ['dimensions','房间尺寸','这间影院有多大','size-plan'],
+    ['angles','前场角度','每个座位的前场角度','plan'],
+    ['seating','两排听音位','两排听音位在哪里','side'],
+    ['seats','逐座画面','150 英寸画面，逐座看','eye'],
+    ['channels','全景声总览','JBL 7.2.4 全景声布局','overview'],
+    ['sequence','声道演示','各组声道如何配合','overview'],
+    ['lcr','主声道','主声道 · JBL Studio 6 Theater','front','channels','lcr'],
+    ['surround','侧环绕与后环绕','环绕声道 · JBL 6 8IW','overview','channels','surround'],
+    ['top','顶部声道','顶部声道 · JBL 280CSA','plan','channels','top'],
+    ['subs','双炮配置','双炮低频 · JBL S660','plan','channels','sub'],
+    ['bass','双炮相位','单炮和双炮的直达合成','plan'],
+    ['handover','影院与 KTV','看电影和唱歌，各有各的系统','overview'],
+    ['ktv','KTV 设备','KTV 扩声 · JBL KP4012-WH','front','handover'],
+    ['routing','低频路由','影院双炮与 KTV 低频路由','plan'],
+    ['projection','视频系统','视频系统 · Sony VPL-XW5100','side'],
+    ['rows','两排视角','150 英寸画面，两排视角','side','seats'],
+    ['brightness','画面亮度','150 英寸画面亮度估算','size-front'],
+    ['playback','播放链路','从播放源到 150 英寸画面','front'],
+    ['electronics','电子架构','核心电子系统架构','overview'],
+    ['acoustics','声学设计','声学处理怎样融入装修','overview'],
+    ['finish','装修完成面','装修完成面与空间效果','decor'],
+    ['tuning','调试与验收','系统调试与验收','plan'],
+    ['inventory','设备清单','设备清单总览','overview'],
+    ['closing','方案总结','把影院体验带回家','decor'],
+  ].map(([id,label,title,view,scene=id,group])=>({id,label,title,view,scene,group}));
+
+  const groups=[
+    ['lcr','前方左、中、右','把对白和画面中的动作放在幕前方向。'],
+    ['surround','侧环绕与后环绕','由侧边和后方的四只音箱接续耳平面声像。'],
+    ['top','四只顶部音箱','前、后两组顶部声道提供高度方向。'],
+    ['sub','前后双低音炮','两只炮负责低频，合成效果由实测确定。'],
+    ['all','完整 7.2.4 布局','七只耳平面、两只低音炮、四只顶部音箱共同构成影院系统。'],
+  ];
+  const zones=[
+    ['front','幕墙与前角','核对幕料、背箱及安装距离。按现场响应决定前墙吸声和低频处理。'],
+    ['side','两侧反射区','识别前场音箱的早期反射路径，按实测和饰面条件确定处理范围。'],
+    ['rear','后墙与柜体','确认后排近墙影响、柜门异响和后环绕检修空间。'],
+    ['ceiling','顶面与地台','协调顶部音箱、灯槽、吊顶与通风。低频处理的空间与做法待施工深化。'],
+  ];
+
+  function brightness(picture,{lumens,gain}) {
+    const area=picture.width*picture.height/1e6;
+    const fl=lumens*gain/(area*10.7639104);
+    return {area,fl,nits:fl*3.426259};
+  }
+
+  function create({d,state,seats,picture,heading,metrics,facts,note,button,fix,mm,pair}) {
+    const ref=id=>seats.find(s=>s.id===id);
+    const view=id=>CinemaMath.viewing(ref(id),d.screen,picture,seats);
+    const title=key=>chapters.find(p=>p.id===key).title;
+    const jump=(label,id)=>button(label,'data-jump',id);
+    const actions=(...buttons)=>`<div class="choice-row">${buttons.join('')}</div>`;
+    const chain=value=>`<p class="chain">${value}</p>`;
+    const seatsTable=(caption,cols,rows)=>`<table class="report-table"><caption>${caption}</caption>
+      <thead><tr>${cols.map(col=>`<th scope="col">${col}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(([first,...rest])=>`<tr><th scope="row">${first}</th>${rest.map(cell=>`<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    const byType=type=>d.speakers.filter(s=>s.type===type);
+    return {
+      overview:()=>heading(title('overview'),'中星红庐香颂 · 私人影院系统设计方案')+
+        metrics([['150″','透声画面'],['7.2.4','全景声'],['3+3','两排座位']])+actions(jump('开始汇报','experience')),
+      experience:()=>heading(title('experience'),'在同一个地下影音室里，让家人观影、来客聚会和 K 歌都能方便使用。')+
+        facts([['电影','幕后三声道与透声大画面'],['两排体验','逐座核对画面、声音和通行'],['卡拉 OK','独立人声扩声与单独预设'],['交付','测量、试听和操作演练']])+
+        actions(jump('看看房间尺寸','dimensions')),
+      angles:()=>{
+        const [left,,right]=byType('lcr');
+        const selected=ref(state.seat);
+        const angle=(speaker,seat)=>Math.atan2(speaker.x-seat.eye[0],seat.eye[1]-speaker.y)*180/Math.PI;
+        const span=seat=>angle(left,seat)-angle(right,seat);
+        return heading(title('angles'),'从每个座位看左右主音箱的水平总张角。左侧线段连接当前座位与 L、R。')+
+          metrics([[state.seat,'当前听音位'],[`${fix(span(selected))}°`,'左右总张角'],[`${fix(angle(left,selected))}°`,'左声道水平偏角']])+
+          seatsTable('六座前场角度',['座位','左偏角','右偏角','总张角'],seats.map(s=>[s.id,
+            `${fix(angle(left,s))}°`,`${fix(angle(right,s))}°`,`${fix(span(s))}°`]))+
+          note('几何依据。','按图纸眼点和音箱中心计算。右侧为负角，屏幕观看视角在第 06 页查看。');
+      },
+      seating:()=>heading(title('seating'),'两排 3+3 对齐。左侧纵向引线显示所选座位的眼点相对于前墙和基准地面的位置。')+
+        seatsTable('两排中位',['参考位','眼点至前墙','眼点标高'],['A2','B2'].map(id=>[id,mm(ref(id).eye[1]),`+${mm(ref(id).eye[2])}`]))+
+        facts([['地台高差',`+${mm(d.platform.height)}`],['通行','后排左右各一级踏步']])+actions(jump('看空间尺寸','dimensions')),
+      channels:()=>heading(title('channels'),'幕后三只前声道、侧后环绕和四只顶声道覆盖两个座排，两只低音炮前后分置。')+
+        metrics([['7','耳平面声道'],['2','低音炮'],['4','顶部声道']])+
+        facts([['前声道',d.equipment.lcr.model],['环绕',d.equipment.surround.model],['顶部',d.equipment.top.model],['低频',d.equipment.sub.model]])+
+        actions(jump('看各组声道演示','sequence'),jump('看幕后 L/C/R','lcr')),
+      sequence:()=>heading(title('sequence'),'按前方、环绕、顶部、双炮、完整布局的顺序，在模型中依次点亮。')+
+        `<div class="report-steps" role="group" aria-label="声道组">${groups.map(([id,name],i)=>button(`<small>0${i+1}</small> ${name}`,'data-group',id,id===state.sequenceGroup)).join('')}</div>`+
+        `<div id="sequence-info" aria-live="polite">${note('当前声道组。',groups.find(([id])=>id===state.sequenceGroup)[2])}</div>`+
+        actions(button(state.sequencePlaying?'暂停演示':'播放演示','data-sequence',state.sequencePlaying?'pause':'play'),
+          button('从头重播','data-sequence','replay')),
+      ktv:()=>heading(title('ktv'),'两只 JBL KP4012-WH 承担 KTV 人声和伴奏扩声。')+
+        chain('F200 2T 点歌 / U-3100 话筒 → X5 效果器 → V10 功放 → JBL KP4012-WH × 2')+
+        facts([['箱体参考',pair(d.equipment.ktv.width,d.equipment.ktv.height)+` · 深 ${mm(d.equipment.ktv.depth)}`],
+          ['调试','先定话筒增益与限幅，再核反馈余量、覆盖和预设切换']]),
+      routing:()=>heading(title('routing'),'本项目有两只影院低音炮。KTV 按独立链路设计，跨系统低频路由在设备和信号接线确认后复核。')+
+        chain('影院 LFE → Denon AVR-X4800H 的独立低频输出 → JBL S660 × 2')+
+        chain('KTV 话筒与伴奏 → X5 效果器 → V10 功放 → JBL KP4012-WH × 2')+
+        note('交付检查。','分别确认信号流、限幅、模式切换和静音顺序。现有资料未确认 KTV 共享影院双炮。'),
+      rows:()=>{
+        const a=view('A2'), b=view('B2');
+        const hit=b.rays[1].obstruction;
+        return heading(title('rows'),'比较两排中间位。前排画面张角更大，后排需重点检查画面下沿和字幕。')+
+          seatsTable('两排中间位',['座位','至幕面','水平视角'],[['A2',`${fix(a.depth/1000,2)} m`,`${a.fov}°`],['B2',`${fix(b.depth/1000,2)} m`,`${b.fov}°`]])+
+          note('现场核对。',hit?`按人体包络估算，B2 看向下沿中点的视线低于前排头顶约 ${mm(-hit.clearance)}。以实椅、坐姿和字幕片段复核。`:'用实椅和字幕片段复核两排视线。',true)+
+          actions(jump('逐座查看','seats'),jump('核对幕布尺寸','dimensions'));
+      },
+      brightness:()=>heading(title('brightness'),'输入校色后到达幕面的光通量和幕料增益，查看估算亮度。初始输入是演示值。')+
+        `<div id="light-results"></div><div class="phase-form">
+          <label for="lumens">幕面光通量 <output id="lumens-out"></output><input id="lumens" type="range" min="500" max="2500" step="50" value="${state.lumens}"></label>
+          <label for="gain">幕布增益 <output id="gain-out"></output><input id="gain" type="range" min=".5" max="1.5" step=".05" value="${state.gain}"></label></div>`+
+        note('计算与复测。','亮度（fL）＝光通量 × 幕布增益 ÷ 有效画面面积（平方英尺）。透声幕、镜头和校色条件待实测，再确定实际 SDR/HDR 表现。'),
+      playback:()=>heading(title('playback'),'影院和 KTV 使用各自的片源与播放操作。')+
+        chain('影院播放源 → Denon AVR-X4800H → Sony VPL-XW5100 → 150 英寸透声幕')+
+        chain('KTV 点歌 → F200 2T → 显示与独立扩声链路')+
+        facts([['影院播放源型号','待确认'],['安装验证','核对片源输出、HDMI、解码、4K 与 HDR 握手']]),
+      electronics:()=>heading(title('electronics'),'Denon 负责解码与分配，独立后级补齐影院扬声器驱动，KTV 由独立效果器和功放处理。')+
+        chain('影院：Denon AVR-X4800H → JS-AUDIO GT3008 / AVR 功放 → 11 只无源音箱')+
+        chain('低频：AVR 独立低频输出 → 两只 JBL S660')+
+        chain('KTV：X5 → V10 → 两只 JBL KP4012-WH')+
+        note('安装核对。','现场确认功放分配、线路编号、机柜散热、检修和开关机顺序。'),
+      acoustics:()=>heading(title('acoustics'),'在模型中标出优先核查的区域，处理范围和做法结合饰面、结构及测量确定。')+
+        `<div class="report-steps" role="group" aria-label="声学核查区域">${zones.map(([id,name])=>button(name,'data-zone',id,id===state.zone)).join('')}</div>`+
+        note('本区核查。',zones.find(([id])=>id===state.zone)[2])+
+        note('现场证据。','记录带时间参考的六座频响、低频衰减和可疑反射，再决定摆位、吸声和 DSP 参数。'),
+      finish:()=>heading(title('finish'),'用饰面参考确定色调与材质方向，并让幕墙、灯槽、柜体和两排座椅进入同一视图。')+
+        facts([['墙面与柜体','深棕线框 · 黄铜拉手'],['地面与座椅','深灰地面 · 前排浅驼、后排米白'],['房间完成面净尺寸','待复尺'],['地台设计高差',`+${mm(d.platform.height)}`],['有效幕面',pair(picture.width,picture.height)]])+
+        actions(button('看室内饰面','data-view','decor'),...(d.referencePhoto?[button('查看饰面参考','data-reference','open')]:[]),jump('看原图与完成面对照','dimensions')),
+      inventory:()=>heading(title('inventory'),'本项目按 JBL 7.2.4 与独立 KTV 清单配置。')+
+        seatsTable('主要设备',['用途','型号','数量'],[
+          ...[['前声道','lcr'],['侧后环绕','surround'],['顶部','top'],['低频','sub'],['KTV 音箱','ktv']].map(([name,type])=>[name,d.equipment[type].model,byType(type).length]),
+          ['影院处理／驱动','AVR-X4800H / GT3008','各 1'],['投影／幕布',`${d.projector.model} / ${d.screen.model}`,'各 1'],
+          ['KTV 信号链','F200 2T / X5 / V10 / U-3100','各 1 套'],
+        ])+note('预算范围。',d.budgetText),
+      closing:()=>heading(title('closing'),'透声大画面、JBL 7.2.4 与独立 KTV，满足两排观影和家庭聚会。')+
+        facts([['开工前','复尺装修净尺寸、幕框和后排字幕视线'],['安装后','校准影院、投影及 KTV，复测两排六座'],['交付','测量记录、预设备份与家人操作说明']])+
+        actions(jump('回到封面','overview'),jump('重看调试与验收','tuning')),
+    };
+  }
+  return {chapters,groups,zones,create,brightness};
+})();
+</script>
   <script>(() => {
   const $ = selector => document.querySelector(selector);
   const d = JSON.parse($('#project-data').textContent);
   const seats = CinemaMath.seatPoints(d.seats);
   const picture = CinemaMath.imageSize(d.screen);
   const subs = d.speakers.filter(s=>s.type==='sub');
-  const chapters = [
-    {id:'overview', label:'空间与饰面', title:'影音室空间总览', view:'overview', caption:'设计基线 · 2D v0.2'},
-    {id:'channels', label:'JBL 声道', title:'JBL 7.2.4 与幕墙', view:'overview', caption:'三只前声道置于幕后'},
-    {id:'seats', label:'六座视角', title:'逐座观看与遮挡', view:'eye', caption:'前排人体包络 · 设计估算'},
-    {id:'projection', label:'投影与安装', title:'镜头、幕布与净空', view:'side', caption:'镜头到幕面 · 5.20 m'},
-    {id:'bass', label:'双炮相位', title:'双炮到各座的直达路径', view:'plan', caption:'仅为等幅直达相量演示'},
-    {id:'tuning', label:'调试与复测', title:'从逐路通电到六座复测', view:'plan', caption:'校准工作流 · 待现场实施'},
-    {id:'handover', label:'KTV 与交付', title:'影院 / KTV 信号链', view:'overview', caption:'模式和交付流程示意'},
-  ];
+  const sizeViews = {room:{name:'房间',view:'size-plan',caption:'原图墙线 · mm'},
+    platform:{name:'地台',view:'size-side',caption:'纵剖投影 · 设计标高'},
+    screen:{name:'幕布',view:'size-front',caption:'青色 有效画面 · 暖色 清单外包络'}};
+  const chapters=CinemaReport.chapters;
+  const captions={overview:'设计基线 · 2D v0.2',seats:'视线与人体包络 · 设计估算',bass:'等幅直达相量示意',
+    acoustics:'声学核查位置 · 示意',tuning:'校准流程 · 待现场实施',brightness:'亮度 · 输入值估算'};
   const stages = [
     {title:'通道与基准',do:'核对接线、通道身份、极性、底噪和信号裕量。验幕前 L/C/R 与各环绕、顶声道的映射，锁定 AVR 的功放分配并保存初始设置。',
       proof:'交付端口图、功放分配表、逐声道试音记录及初始预设。'},
@@ -55032,13 +55362,13 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     {title:'KTV 与交付',do:'分别调话筒增益结构、反馈余量与限幅。在安全音量复测电影和 K 歌切换顺序、静音与音量恢复，并试做一次设置备份及回退。',
       proof:'提交测量工程、关键图、DSP/AVR 设置、预设备份、切换手册与整改记录。'},
   ];
-  const state={chapter:'overview',view:'overview',mode:'report',seat:'A2',channel:'L',screen:false,roof:false,
-    labels:true,heads:true,system:'cinema',step:0,frequency:63,delay:0,polarity:false};
-  let scene=null;
+  const state={page:'overview',chapter:'overview',view:'overview',mode:'report',seat:'A2',channel:'L',screen:false,roof:false,
+    labels:true,heads:true,system:'cinema',step:0,frequency:63,delay:0,polarity:false,sizeView:'room',
+    detail:false,sequenceGroup:'lcr',sequencePlaying:false,zone:'front',lumens:1000,gain:1,bassMode:'dual'};
+  let scene=null, sequenceTimer=null;
   const a = $('#analysis');
   const context=$('#scene-context');
-  const nav=$('#chapters');
-  const index=() => chapters.findIndex(item=>item.id===state.chapter);
+  const index=() => chapters.findIndex(item=>item.id===state.page);
   const seat=()=>seats.find(s=>s.id===state.seat);
   const fix=(number,digits=1)=>Number(number).toFixed(digits);
   const n=number=>Math.round(number).toLocaleString('en-US');
@@ -55048,18 +55378,53 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
   const metrics=list=>`<div class="metrics">${list.map(([value,name])=>`<div class="metric"><strong>${value}</strong><small>${name}</small></div>`).join('')}</div>`;
   const facts=list=>`<dl class="facts">${list.map(([key,val])=>`<div><dt>${key}</dt><dd>${val}</dd></div>`).join('')}</dl>`;
   const heading=(title,subtitle)=>`<p class="eyebrow">ENGINEERING NOTE / ${String(index()+1).padStart(2,'0')}</p><h2 id="chapter-title">${title}</h2><p class="lead">${subtitle}</p>`;
+  const mm=value=>`${n(value)} mm`;
+  const pair=(w,h)=>`${n(w)} × ${n(h)} mm`;
+  function dimensionPanel() {
+    const {room,platform,screen}=d;
+    const original=screen.originalZone;
+    const sections={
+      room:{
+        title:'先看房间原图墙线',
+        lead:'俯视图的尺寸线分别指向常规墙线和后柜局部边界。',
+        original:[['常规墙线宽 × 深',pair(room.width,room.mainDepth)],['后柜处局部进深',mm(room.nicheDepth)]],
+        design:[['房间布置依据','沿用原图墙线、侧凹位与柜体']],
+        field:[['毛坯实测宽 × 深','待复尺'],['装修完成面净宽 × 净深','待复尺']],
+      },
+      platform:{
+        title:'地台比前排地面高多少',
+        lead:'地台高度从前排完成地面量到后排地台面。左右踏步在纵剖中投影到同一位置，可切回「房间」查看各自位置。',
+        original:[['原立面地台高差',mm(room.originalPlatformHeight)],
+          ['原立面吊顶标高（周边／内区）',`${n(room.ceiling)}／${n(room.recessedCeiling)} mm`]],
+        design:[['前排地面基准','±0'],['后排地台',`+${mm(platform.height)}`],['后排通行','左右各一级踏步'],
+          ['设计吊顶标高（周边／内区）',`${n(room.ceiling)}／${n(room.recessedCeiling)} mm`]],
+        field:[['毛坯净高','待复尺'],['装修完成面净高','待复尺'],['地台完成面高差','待复尺']],
+      },
+      screen:{
+        title:`${screen.diagonalInch} 英寸幕布尺寸`,
+        lead:'正视图青色标有效画面，暖色标清单尺寸暂作的幕框外包络。',
+        original:[['原立面显示区',pair(original.width,original.height)]],
+        design:[['画面对角线与比例',`${screen.diagonalInch} 英寸 · ${screen.ratio.join(':')}`],
+          ['有效画面（按比例计算）',pair(picture.width,picture.height)],
+          ['清单尺寸（暂作外包络）',pair(screen.outerWidth,screen.outerHeight)]],
+        field:[['幕墙完成面开口','待复尺'],['幕框与挂装尺寸','待厂家安装图和现场复核']],
+      },
+    };
+    const {title,lead,original:source,design,field}=sections[state.sizeView];
+    const modes=state.sizeView==='room'?`<details class="method"><summary>尺寸与低频共振</summary><p>用原图常规墙线做矩形近似，宽向一阶约 ${fix(343000/(2*room.width))} Hz，
+      深向一阶约 ${fix(343000/(2*room.mainDepth))} Hz。该估算用于定位复测频段，实际响应受凹位、完成面、吸声和座位影响。</p></details>`:'';
+    return heading(title,lead)+[['原图标注',source],['装修方案',design],['现场实测',field]].map(([name,rows])=>
+      `<section class="dimension-data"><h3>${name}</h3>${facts(rows)}</section>`).join('')+modes;
+  }
   const pages={
-    overview() {
-      return heading('两排六座的 JBL 私人影院','按确认图纸组织观影、卡拉 OK 与左右两侧通行。原侧凹位、侧柜和后柜进入同一套 3D 模型。')+
-        metrics([['150″','透声固定框幕'],['7.2.4','JBL 影院布局'],['+150','后排地台 mm']])+
-        facts([['常规房间宽 × 深','4.96 × 6.11 m'],['周边 / 灯槽内区','2.35 / 2.50 m'],['座位与踏步','两排 3+3 对齐 · 左右各一级']])+
-        note('饰面按提供的效果图深化。','深棕线框护墙与柜门、黄铜拉手、暖光灯槽、深灰地面与浅色影院座椅。')+
-        `<div class="choice-row">${button('看室内饰面','data-view','decor')}${d.referencePhoto?button('查看饰面参考','data-reference','open'):''}${button('看调试方法','data-jump','tuning')}</div>`;
-    },
+    dimensions:dimensionPanel,
     channels() {
       const s=d.speakers.find(item=>item.id===state.channel);
       const angles=CinemaMath.speakerAngle(s,seat());
       const device=d.equipment[s.type];
+      const count=d.speakers.filter(item=>item.type===s.type).length;
+      const enclosure=s.type==='sub'?pair(device.width,device.height)+` · 深 ${mm(device.depth)}`:
+        pair(device.cutWidth,device.cutHeight)+` · 安装深度 ${device.mountDepth} mm`;
       const names={lcr:'前方声道',surround:'环绕声道',top:'顶部声道',sub:'低音炮',ktv:'KTV 扩声'};
       const caveats={
         lcr:'L/C/R 同高置于透声幕内，网罩距有效画面侧边约 37 mm，幕料距音箱面按图暂留 75 mm。封板前以幕框、开孔、背箱和接线实物复核。',
@@ -55070,6 +55435,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       };
       return heading(`${s.id} · ${names[s.type]}`,`<span class="device-name">${device.model}</span>。角度以 ${state.seat} 眼点和面向银幕的方向计算，正方位角为左。`)+
         metrics([[`${angles.azimuth}°`,'水平偏角'],[`${angles.elevation}°`,'垂直仰角'],[`${fix(angles.distanceM,2)} m`,'空间距离']])+
+        facts([['本组数量',`${count} 只`],[s.type==='sub'?'箱体参考':'开孔与深度参考',enclosure]])+
         note('安装核对。',caveats[s.type])+
         '<h3>处理与驱动</h3><p class="chain">播放源 → Denon AVR-X4800H → JS-AUDIO GT3008 / AVR 功放 → 7 只耳平面音箱 + 4 只顶声道音箱</p>'+
         '<p class="small">双炮接 AVR 独立低频输出。AVR 处理 11 路扬声器信号，内置 9 路功放，外接后级的实际端口由 Amp Assign 和逐路试音确认。</p>'+
@@ -55098,14 +55464,16 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     },
     bass() {
       const g=CinemaMath.bassGeometry(subs,seat());
-      return heading('双炮先测，再合成','选座可看两只炮的几何路径。频率、延时和极性在右侧改变相量，便于说明为什么同一位置会相长或相消。')+
+      const dual=state.bassMode==='dual';
+      return heading('单炮和双炮，怎样比较','以 SW1 单炮为参考。切到双炮后，改变频率、延时和极性，观察同一座位的直达声相长或相消。')+
         metrics([[`${fix(g.distances[0],2)} m`,'SW1 至该座'],[`${fix(g.distances[1],2)} m`,'SW2 至该座'],[`${fix(g.arrivalDeltaMs,2)} ms`,'SW2−SW1 几何到达差']])+
+        `<div class="choice-row" role="group" aria-label="低频比较">${button('SW1 单炮','data-bass-mode','solo',!dual)}${button('SW1 + SW2 双炮','data-bass-mode','dual',dual)}</div>`+
         '<svg id="phase-svg" class="phase-chart" viewBox="0 0 390 146" role="img" aria-label="双炮等幅相量示意"></svg>'+
-        `<div class="phase-form">
+        (dual?`<div class="phase-form">
           <label for="freq">频率 <output id="freq-out"></output><input type="range" id="freq" min="30" max="120" step="1" value="${state.frequency}"></label>
           <label for="delay">SW2 附加延时 <output id="delay-out"></output><input type="range" id="delay" min="-20" max="20" step=".1" value="${state.delay}"></label>
           <div class="choice-row">${button('反转 SW2 极性','data-bass','polarity',state.polarity)}${button('直达路径对齐示意','data-bass','align')}${button('重置','data-bass','reset')}</div>
-        </div>`+
+        </div>`:'')+
         note('模型边界。','两只炮等幅，仅示意直达路径。房间反射、驻波、低通滤波、实际电平和设备延迟需实测。演示数值不用于设备写入。')+
         `<p class="source-link">${link('REW 时间参考与测量',d.links.rew)}</p>`;
     },
@@ -55128,12 +55496,23 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     },
   };
 
+  const report=CinemaReport.create({d,state,seats,picture,heading,metrics,facts,note,button,fix,mm,pair});
+  function lightReadout() {
+    if(state.page!=='brightness')return;
+    const {area,fl,nits}=CinemaReport.brightness(picture,state);
+    $('#light-results').innerHTML=metrics([[`${fix(fl)} fL`,'理论幕面亮度'],[`${fix(nits)} nit`,'理论幕面亮度'],[`${fix(area,2)} m²`,'有效画面面积']]);
+    $('#lumens-out').textContent=`${state.lumens} lm`;
+    $('#gain-out').textContent=fix(state.gain,2);
+  }
   function phasePlot() {
     if(state.chapter!=='bass') return;
+    const dual=state.bassMode==='dual';
     const geo=CinemaMath.bassGeometry(subs,seat());
     const r=CinemaMath.bassSum(state.frequency,geo.arrivalDeltaMs+state.delay,state.polarity);
-    $('#freq-out').textContent=`${state.frequency} Hz`;
-    $('#delay-out').textContent=`${fix(state.delay,1)} ms`;
+    if(dual) {
+      $('#freq-out').textContent=`${state.frequency} Hz`;
+      $('#delay-out').textContent=`${fix(state.delay,1)} ms`;
+    }
     const pt=([x,y])=>[99+x*34,73-y*34].map(v=>fix(v,1)).join(',');
     const head=(origin,end,color)=>{
       const dx=end[0]-origin[0],dy=end[1]-origin[1],length=Math.hypot(dx,dy);
@@ -55143,41 +55522,55 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       return `<polyline points="${pt(a)} ${pt(end)} ${pt(b)}" fill="none" stroke="${color}" stroke-width="3"/>`;
     };
     const arrow=(from,to,color)=>`<polyline points="${pt(from)} ${pt(to)}" fill="none" stroke="${color}" stroke-width="3"/>${head(from,to,color)}`;
-    const result=r.levelDb===null?'理论抵消':`${r.levelDb>0?'+':''}${fix(r.levelDb,1)} dB`;
+    const result=dual?(r.levelDb===null?'理论抵消':`${r.levelDb>0?'+':''}${fix(r.levelDb,1)} dB`):'0.0 dB';
     const lag=((r.lagDeg%360)+360)%360;
     $('#phase-svg').innerHTML=`
       <rect x="0" y="3" width="389" height="140" rx="9" fill="#102028" stroke="#334952"/>
       <circle cx="99" cy="73" r="34" fill="none" stroke="#476570" stroke-dasharray="4 4"/>
       <path d="M30 73H172M99 15V132" stroke="#476570" fill="none"/>
-      ${arrow([0,0],[1,0],'#86bcff')}${arrow([1,0],r.sum,'#f3c47e')}${arrow([0,0],r.sum,'#8ce4c7')}
+      ${arrow([0,0],[1,0],'#86bcff')}${dual?arrow([1,0],r.sum,'#f3c47e')+arrow([0,0],r.sum,'#8ce4c7'):''}
       <g font-family="Segoe UI, Microsoft YaHei UI, sans-serif">
-      <text x="187" y="29" fill="#e8eeee" font-size="12">SW2 相对滞后角 ${fix(lag,0)}°</text>
+      <text x="187" y="29" fill="#e8eeee" font-size="12">${dual?`SW2 相对滞后角 ${fix(lag,0)}°`:'SW1 单炮参考'}</text>
       <text id="sum-db" x="187" y="63" fill="#8ce4c7" font-size="28" font-weight="600">${result}</text>
       <text x="187" y="86" fill="#b2c3c9" font-size="11">合成 / 单炮等幅参考</text>
-      <text x="187" y="115" fill="#b2c3c9" font-size="11">蓝 SW1 · 黄 SW2 · 青 合成</text>
+      <text x="187" y="115" fill="#b2c3c9" font-size="11">${dual?'蓝 SW1 · 黄 SW2 · 青 合成':'蓝 SW1'}</text>
       </g>`;
   }
   function renderPanels() {
     const c=chapters[index()];
     $('#scene-title').textContent=c.title;
-    $('#scene-caption').textContent=state.mode==='roam'?'3D 漫游 · 拖动、滚轮或双指':c.caption;
-    for(const b of nav.querySelectorAll('button')) {
-      if(b.dataset.chapter===state.chapter) b.setAttribute('aria-current','step');
-      else b.removeAttribute('aria-current');
-    }
-    const seatOptions=()=>`<div class="seat-grid" role="group" aria-label="座位选择">${seats.map(s=>button(s.id,'data-seat',s.id,s.id===state.seat)).join('')}</div>`;
+    $('#scene-caption').textContent=state.mode==='roam'?'3D 漫游 · 拖动、滚轮或双指':
+      state.chapter==='dimensions'?sizeViews[state.sizeView].caption:captions[c.id]??c.label;
+    const cover=state.page==='overview'&&state.mode==='report';
+    document.body.classList.toggle('cover-mode',cover);
+    $('#cover').hidden=!cover;
+    $('#legend').hidden=(state.chapter==='dimensions'&&state.mode==='report')||cover;
+    $('#page-picker').value=c.id;
+    $('#page-counter').textContent=`${String(index()+1).padStart(2,'0')} / ${chapters.length}`;
+    $('#previous-page').disabled=index()===0;
+    $('#next-page').disabled=index()===chapters.length-1;
+    const seatOptions=()=>{
+      const choices=state.page==='rows'?seats.filter(s=>s.column===2):seats;
+      return `<div class="seat-grid" role="group" aria-label="座位选择">${choices.map(s=>button(s.id,'data-seat',s.id,s.id===state.seat)).join('')}</div>`;
+    };
     let local='';
-    if(state.chapter==='channels') {
-      local=`<small>点击声道查看其摆位与距离</small><div class="channel-grid" role="group" aria-label="声道选择">${d.speakers.filter(s=>s.type!=='ktv').map(s=>button(s.id,'data-channel',s.id,s.id===state.channel)).join('')}</div>`;
-    } else if(['seats','bass','tuning'].includes(state.chapter)) {
+    if(state.chapter==='dimensions') {
+      local=`<div class="choice-row" role="group" aria-label="尺寸视图">${Object.entries(sizeViews).map(([id,item])=>
+        button(item.name,'data-size',id,state.view===item.view)).join('')}</div>`;
+    } else if(state.chapter==='channels') {
+      const options=d.speakers.filter(s=>c.group?s.type===c.group:s.type!=='ktv');
+      local=`<small>点击声道查看其摆位与距离</small><div class="channel-grid" role="group" aria-label="声道选择">${options.map(s=>button(s.id,'data-channel',s.id,state.detail&&s.id===state.channel)).join('')}</div>`;
+    } else if(['seats','bass','tuning','seating','angles'].includes(state.chapter)) {
       local=seatOptions();
       if(state.chapter==='seats') local+=`<small>切换眼点与工程纵剖</small><div class="choice-row">${button('观影眼位','data-view','eye',state.view==='eye')}${button('看视线纵剖','data-view','side',state.view==='side')}${button('前排人体示意','data-heads','toggle',state.heads)}</div>`;
-    } else if(state.chapter==='handover') {
+    } else if(state.page==='handover') {
       local=`<div class="choice-row">${button('影院模式','data-system','cinema',state.system==='cinema')}${button('KTV 模式','data-system','ktv',state.system==='ktv')}</div>`;
     }
     context.innerHTML=local;
-    a.innerHTML=pages[state.chapter]();
+    const panel=state.page==='channels'&&state.detail?pages.channels:report[state.page]??pages[state.chapter];
+    a.innerHTML=panel();
     phasePlot();
+    lightReadout();
   }
   function syncButtons() {
     $('#screen-toggle').setAttribute('aria-pressed',state.screen);
@@ -55186,37 +55579,92 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     $('#roam-mode').setAttribute('aria-pressed',state.mode==='roam');
     $('#report-mode').setAttribute('aria-pressed',state.mode==='report');
     document.querySelectorAll('.camera-tools [data-view], #scene-context [data-view]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.view===state.view));
+    context.querySelectorAll('[data-size]').forEach(b=>b.setAttribute('aria-pressed',sizeViews[b.dataset.size].view===state.view));
   }
   function update(move=false,panels=true) {
     if(panels)renderPanels();
     syncButtons();
-    const active=state.mode==='roam'?{...state,chapter:'overview'}:state;
+    const active=state.mode==='roam'?{...state,chapter:'overview'}:state.page==='overview'?{...state,labels:false}:state;
     scene?.applyState(active,{move});
+  }
+  function stopSequence() {
+    clearInterval(sequenceTimer);
+    sequenceTimer=null;
+    state.sequencePlaying=false;
+  }
+  function syncSequence() {
+    const current=CinemaReport.groups.find(([id])=>id===state.sequenceGroup);
+    $('#sequence-info').innerHTML=note('当前声道组。',current[2]);
+    a.querySelectorAll('[data-group]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.group===state.sequenceGroup));
+    const play=a.querySelector('[data-sequence]:not([data-sequence="replay"])');
+    play.dataset.sequence=state.sequencePlaying?'pause':'play';
+    play.textContent=state.sequencePlaying?'暂停演示':'播放演示';
+    update(false,false);
+  }
+  function playSequence(restart=false) {
+    stopSequence();
+    const groups=CinemaReport.groups;
+    if(restart||state.sequenceGroup==='all')state.sequenceGroup=groups[0][0];
+    state.sequencePlaying=true;
+    syncSequence();
+    sequenceTimer=setInterval(()=>{
+      const next=groups.findIndex(([id])=>id===state.sequenceGroup)+1;
+      state.sequenceGroup=groups[next][0];
+      if(state.sequenceGroup==='all') stopSequence();
+      syncSequence();
+    },1750);
   }
   function chooseChapter(id) {
     const chapter=chapters.find(item=>item.id===id);
     if(!chapter)return;
-    state.mode='report'; state.chapter=id; state.view=chapter.view;
-    state.screen=id==='channels'||id==='handover'&&state.system==='cinema';
+    stopSequence();
+    state.mode='report'; state.page=id; state.chapter=chapter.scene; state.view=chapter.view;
+    state.detail=Boolean(chapter.group);
+    if(chapter.group) state.channel=d.speakers.find(s=>s.type===chapter.group).id;
+    if(id==='dimensions') state.sizeView='room';
+    if(id==='rows'&& !['A2','B2'].includes(state.seat)) state.seat='A2';
+    if(id==='handover') state.system='cinema';
+    if(id==='ktv') state.system='ktv';
+    if(id==='sequence') state.sequenceGroup='lcr';
+    state.screen=chapter.scene==='channels'||id==='sequence'||id==='handover';
     state.roof=id==='projection';
     update(true);
+    if(id==='sequence'&&!matchMedia('(prefers-reduced-motion: reduce)').matches)playSequence();
   }
-  nav.innerHTML=chapters.map((c,i)=>`<button type="button" data-chapter="${c.id}"><small>${String(i+1).padStart(2,'0')}</small>${c.label}</button>`).join('');
-  nav.addEventListener('keydown',e=>{
-    if(!['ArrowLeft','ArrowRight'].includes(e.key)||!e.target.matches('button')) return;
+  $('#page-picker').innerHTML=chapters.map((c,i)=>`<option value="${c.id}">${String(i+1).padStart(2,'0')} · ${c.label}</option>`).join('');
+  $('#page-picker').addEventListener('change',e=>chooseChapter(e.target.value));
+  const turn=delta=>{
+    const page=chapters[index()+delta];
+    if(page)chooseChapter(page.id);
+  };
+  document.addEventListener('keydown',e=>{
+    if(!['ArrowLeft','ArrowRight'].includes(e.key)||e.target.closest('input,select,dialog,textarea,[contenteditable]')||state.mode!=='report') return;
     e.preventDefault();
-    const i=(index()+(e.key==='ArrowRight'?1:chapters.length-1))%chapters.length;
-    chooseChapter(chapters[i].id);
-    nav.querySelector(`[data-chapter="${chapters[i].id}"]`).focus();
+    turn(e.key==='ArrowRight'?1:-1);
   });
   document.addEventListener('click',e=>{
     const b=e.target.closest('button');
     if(!b)return;
     const k=b.dataset;
-    if(k.chapter||k.jump){chooseChapter(k.chapter||k.jump);return;}
-    if(k.view){state.view=k.view; if(k.view==='eye'||k.view==='decor')state.screen=false; update(true);return;}
+    if(k.turn){turn(Number(k.turn));return;}
+    if(k.jump){chooseChapter(k.jump);return;}
+    if(k.group){stopSequence();state.sequenceGroup=k.group;syncSequence();return;}
+    if(k.sequence){
+      if(k.sequence==='pause'){stopSequence();syncSequence();}
+      else playSequence(k.sequence==='replay');
+      return;
+    }
+    if(k.zone){state.zone=k.zone;update();a.querySelector(`[data-zone="${k.zone}"]`)?.focus({preventScroll:true});return;}
+    if(k.bassMode){
+      state.bassMode=k.bassMode;update();a.querySelector(`[data-bass-mode="${k.bassMode}"]`)?.focus({preventScroll:true});return;
+    }
+    if(k.size&&sizeViews[k.size]){
+      state.sizeView=k.size; state.mode='report'; state.view=sizeViews[k.size].view; state.screen=false; state.roof=false;
+      update(true);context.querySelector(`[data-size="${k.size}"]`)?.focus({preventScroll:true});return;
+    }
+    if(k.view){stopSequence();state.view=k.view; if(k.view==='eye'||k.view==='decor')state.screen=false; update(true);return;}
     if(k.seat){state.seat=k.seat;update(state.view==='eye');context.querySelector(`[data-seat="${k.seat}"]`)?.focus({preventScroll:true});return;}
-    if(k.channel){state.channel=k.channel;state.screen=['L','C','R'].includes(k.channel)||state.screen;update();context.querySelector(`[data-channel="${k.channel}"]`)?.focus({preventScroll:true});return;}
+    if(k.channel){state.detail=true;state.channel=k.channel;state.screen=['L','C','R'].includes(k.channel)||state.screen;update();context.querySelector(`[data-channel="${k.channel}"]`)?.focus({preventScroll:true});return;}
     if(k.step!==undefined){state.step=Number(k.step);update();a.querySelector(`[data-step="${k.step}"]`)?.focus({preventScroll:true});return;}
     if(k.heads){state.heads=!state.heads;update();return;}
     if(k.system){state.system=k.system;state.screen=k.system==='cinema';update();return;}
@@ -55232,8 +55680,8 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     if(b.id==='screen-toggle'){state.screen=!state.screen;update(false,false);}
     if(b.id==='roof-toggle'){state.roof=!state.roof;update(false,false);}
     if(b.id==='label-toggle'){state.labels=!state.labels;update(false,false);}
-    if(b.id==='report-mode'){chooseChapter(state.chapter);}
-    if(b.id==='roam-mode'){state.mode='roam';state.view='overview';state.roof=false;state.screen=false;update(true);}
+    if(b.id==='report-mode'){chooseChapter(state.page);}
+    if(b.id==='roam-mode'){stopSequence();state.mode='roam';state.view='overview';state.roof=false;state.screen=false;update(true);}
     if(b.id==='expand'){
       const value=document.body.classList.toggle('expanded');
       b.setAttribute('aria-pressed',value);b.textContent=value?'退出放大':'放大';
@@ -55242,12 +55690,14 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
   a.addEventListener('input',e=>{
     if(e.target.id==='freq'){state.frequency=Number(e.target.value);phasePlot();}
     if(e.target.id==='delay'){state.delay=Number(e.target.value);phasePlot();}
+    if(['lumens','gain'].includes(e.target.id)){state[e.target.id]=Number(e.target.value);lightReadout();}
   });
   $('#source-content').innerHTML=`<p>房间几何、设备和座位采用已确认的 v0.2 平立面与设备清单。饰面依据提供的效果图，仅为展示。</p>
     ${link('Sony 投射范围',d.links.sony)}${link('JBL Studio 6 规格',d.links.jbl)}${link('Denon 信号规格',d.links.denon)}${link('Dolby 布局',d.links.dolby)}${link('REW 测量',d.links.rew)}
     ${d.referencePhoto?button('饰面参考图','data-reference','open'):''}`;
   function fallback(message) {
     $('#scene-loading').hidden=true;
+    $('#hud').hidden=true;
     $('#scene-error').textContent=message;
     $('#fallback-plan').src=d.fallbackPlan;
     $('#scene-fallback').hidden=false;
@@ -55258,11 +55708,18 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     scene=CinemaScene.create($('#viewport'),$('#hud'),d,{
       onReady:()=>{$('#scene-loading').hidden=true;document.documentElement.dataset.render='webgl';},
       onError:fallback,
-      onManual:()=>{state.view='orbit';syncButtons();},
+      onManual:()=>{
+        state.view='orbit';
+        if(state.sequencePlaying){stopSequence();syncSequence();}
+        else syncButtons();
+      },
       onPick:({type,id})=>{
         if(type==='seat'){state.seat=id;if(state.chapter==='seats')update(state.view==='eye');else chooseChapter('seats');}
-        if(type==='channel'&&id.startsWith('K-')){state.system='ktv';chooseChapter('handover');}
-        else if(type==='channel'){state.channel=id;if(state.chapter==='channels')update();else chooseChapter('channels');}
+        if(type==='channel'&&id.startsWith('K-')){chooseChapter('ktv');}
+        else if(type==='channel'){
+          if(state.chapter!=='channels'||chapters[index()].group&&chapters[index()].group!==d.speakers.find(s=>s.id===id).type)chooseChapter('channels');
+          state.channel=id;state.detail=true;state.screen=['L','C','R'].includes(id)||state.screen;update();
+        }
       },
     });
     update(true,false);
@@ -55271,7 +55728,8 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     console.warn('Cinema WebGL initialization failed',error.message);
   }
   Object.defineProperty(window,'cinemaReview',{value:()=>({
-    build:'zhongxing-jbl-1.0', layout:d.version, sha256:d.baselineSha256, state:{...state},
+    build:`zhongxing-jbl-${d.edition.slice(1)}`, layout:d.version, sha256:d.baselineSha256, state:{...state},
+    pages:chapters.map(({id,title},i)=>({id,title,number:i+1})),
     seatMetrics:CinemaMath.viewing(seat(),d.screen,picture,seats), scene:scene?.snapshot()??null,
   })});
 })();
