@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="cinema-build" content="zhongxing-viewer-1.4.1">
+  <meta name="cinema-build" content="zhongxing-viewer-1.4.5">
   <meta name="robots" content="noindex, noarchive">
   <meta name="color-scheme" content="dark">
   <title>中星红庐香颂 · 3D 漫游</title>
@@ -129,6 +129,7 @@ dd { margin:0; text-align:right; }
     <button type="button" data-view="front-compare">前墙</button>
     <button type="button" data-view="left-wall">左墙</button>
     <button type="button" data-view="right-wall">右墙</button>
+    <button type="button" data-view="karaoke-area">点歌区</button>
     <button type="button" data-view="rear">后墙</button>
     <button type="button" data-view="plan">俯视</button>
   </nav>
@@ -157,7 +158,7 @@ dd { margin:0; text-align:right; }
     <p class="hint" id="orbit-hint">拖动旋转 · 滚轮或双指缩放</p>
   </main>
   <noscript>请启用 JavaScript 查看 3D 漫游。</noscript>
-  <script id="project-data" type="application/json">{"products":{"tower":{"model":"Sonetto V G2","width":308,"height":1088,"depth":415,"referenceHeight":997,"url":"https://www.sonusfaber.com/en/products/sonetto-v/tech-specs","drawing":"https://a.storyblok.com/f/259299/x/e9415e2e28/tech-drawings_sonetto-v.pdf"},"center":{"model":"Sonetto Center G2","width":648,"height":235,"depth":353,"referenceHeight":193,"url":"https://www.sonusfaber.com/en/products/sonetto-center/tech-specs","drawing":"https://a.storyblok.com/f/259299/x/b3bd36b018/tech-drawings_sonetto-center.pdf"},"embedded":{"model":"Palladio PL-563","width":216,"height":471,"depth":100,"cutWidth":192,"cutHeight":448,"protrusion":13,"url":"https://www.sonusfaber.com/en/products/pl-563"},"wall":{"model":"Sonetto Wall G2","width":271,"height":437,"depth":168,"cabinetDepth":128,"bracketPivot":20,"tweeterAboveCenter":108,"wooferBelowCenter":15,"url":"https://www.sonusfaber.com/en/products/sonetto-wall/tech-specs","drawing":"https://a.storyblok.com/f/259299/x/4b46444624/tech-drawings_sonetto-wall.zip"}},"floor":{"left":[1980,940,0],"center":[0,550,0],"right":[-1980,940,0],"frontSub":[1980,2420,210]},"projector":{"model":"Sony P9（VPL-XW8100）","x":570,"lensY":6090,"lensZ":2000,"widthEnvelope":460,"heightEnvelope":210,"depthEnvelope":517,"lensAboveBase":111,"lensProjection":20,"throwRange":[4510,9450],"depthIncludesLens":true},"cabinet":{"extension":0,"cheek":20,"chamfer":0,"sideClearance":300,"backPanel":20,"ceilingInside":2270,"top":2300,"rearClearance":50,"topClearance":150,"sideMiddleHeight":600,"sideLowerHeight":900,"sideUpperHeight":700},"standing":{"height":1700,"rearWalkX":450},"viewer":true,"wallPier":{"xMin":-2480,"xMax":-2120,"yMin":4010,"yMax":4250},"wallMounts":{"SL":{"point":[2480,4130,1610],"wallYaw":90,"adjustment":-11},"SR":{"point":[-2120,4130,1610],"wallYaw":-90,"adjustment":11},"SBL":{"point":[1450,6110,1710],"wallYaw":180,"adjustment":-15},"SBR":{"point":[-1450,6110,1710],"wallYaw":-180,"adjustment":15}},"ktvFront":{"y":110,"z":1710,"trimWidth":460,"trimFrontY":398},"project":"中星红庐香颂","version":"v0.2","edition":"v1.4.1","room":{"width":4960,"mainDepth":6110,"nicheDepth":6710,"ceiling":2350,"recessedCeiling":2500,"ceilingRecess":{"front":450,"back":3660,"halfWidth":2130},"originalPlatformHeight":150,"outline":[[2480,0],[-2480,0],[-2480,1250],[-2731,1250],[-3380,1899],[-3380,3360],[-2731,4010],[-2480,4010],[-2480,6110],[20,6110],[20,6710],[2480,6710]],"door":{"x":2480,"yStart":1270,"width":900,"swing":"inward"},"cabinetRight":{"xMin":-2480,"xMax":-2120,"yMin":4250,"yMax":6110},"cabinetRear":{"xMin":20,"xMax":2480,"yMin":6110,"yMax":6710}},"screen":{"model":"PIER K150PHA65","diagonalInch":150,"ratio":[16,9],"outerWidth":3450,"outerHeight":1998,"x":0,"y":200,"outerBottom":315,"openingAllowancePerEdge":20,"originalZone":{"width":3340,"height":1900,"bottom":300}},"seats":{"seatWidth":1000,"seatDepth":950,"eyeOffset":700,"eyeZ":1150,"headZ":1270,"row1":{"xCenter":0,"yFront":3200,"platform":0},"row2":{"xCenter":0,"yFront":4610,"platform":150}},"platform":{"front":4270,"back":6110,"xMin":-2120,"xMax":2480,"height":150,"stepDepth":280,"leftStepWidth":940,"rightStepWidth":600},"speakers":[{"id":"L","type":"lcr","x":1530,"y":125,"z":1130},{"id":"C","type":"lcr","x":0,"y":125,"z":1130},{"id":"R","type":"lcr","x":-1530,"y":125,"z":1130},{"id":"SL","type":"surround","x":2460,"y":4090,"z":1610},{"id":"SR","type":"surround","x":-2460,"y":4160,"z":1610},{"id":"SBL","type":"surround","x":1450,"y":6080,"z":1710},{"id":"SBR","type":"surround","x":-1450,"y":6080,"z":1710},{"id":"TFL","type":"top","x":1150,"y":2600,"z":2500},{"id":"TFR","type":"top","x":-1150,"y":2600,"z":2500},{"id":"TRL","type":"top","x":1150,"y":5650,"z":2350},{"id":"TRR","type":"top","x":-1150,"y":5650,"z":2350},{"id":"SW1","type":"sub","x":1960,"y":760,"z":210},{"id":"SW2","type":"sub","x":-1825,"y":5785,"z":360},{"id":"K-L","type":"ktv","x":2160,"y":330,"z":1710},{"id":"K-R","type":"ktv","x":-2160,"y":330,"z":1710}],"equipment":{"lcr":{"model":"JBL Studio 6 Theater","cutWidth":157,"cutHeight":642,"grilleWidth":188,"grilleHeight":674,"mountDepth":94.5},"surround":{"model":"JBL 6 8IW","cutWidth":221,"cutHeight":318,"mountDepth":94.5},"top":{"model":"JBL 280CSA","cutWidth":260,"cutHeight":260,"mountDepth":139},"sub":{"model":"JBL S660","width":420,"depth":420,"height":420},"ktv":{"model":"JBL KP4012-WH","width":360,"depth":382,"height":600},"control":{"model":"F200 2T","x":-2390,"y":1040},"rack":{"location":"优先与弱电/设备间协调","status":"位置、供电、散热和维修条件待确认"},"extraSubPrewire":[{"x":-1840,"y":695},{"x":1840,"y":5785}]},"approvedDate":"2026-11-06","baselineSha256":"33428a6fb78ace39eb6e25be1b4f9abe232517d62bce66499cd41412bce16700","links":{"sony":"https://helpguide.sony.net/vpl/xw8100/v1/en/contents/TP1001689574.html","jbl":"https://support.jbl.com/on/demandware.static/-/Sites-masterCatalog_Harman/default/dw98cd0d96/pdfs/SpecSheet_JBL_Studio_6_Architectural_rev6_20221208_EN.pdf","denon":"https://www.denon.com/en-us/product/av-receivers/avr-x4800h/300608.html","dolby":"https://www.dolby.com/about/support/guide/speaker-setup-guides/7.1.4-overhead-speaker-setup-guide","rew":"https://www.roomeqwizard.com/help/help_en-GB/html/gettingstarted.html"},"publicEdition":true,"budgetText":"影音设备及安装调试单列。装修和座椅另计，金额与分工以正式报价和合同为准。","fallbackPlan":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9Ii0yODIwIC00MDAgNjU1MCA3NDcwIj4KICAgIDxyZWN0IHg9Ii0yODIwIiB5PSItNDAwIiB3aWR0aD0iNjU1MCIgaGVpZ2h0PSI3NDcwIiBmaWxsPSIjMTQyMzJhIi8+CiAgICA8cG9seWdvbiBwb2ludHM9Ii0yNDgwLDAgMjQ4MCwwIDI0ODAsMTI1MCAyNzMxLDEyNTAgMzM4MCwxODk5IDMzODAsMzM2MCAyNzMxLDQwMTAgMjQ4MCw0MDEwIDI0ODAsNjExMCAtMjAsNjExMCAtMjAsNjcxMCAtMjQ4MCw2NzEwIiBmaWxsPSIjMmEzNzNiIiBzdHJva2U9IiM4ZTllOWUiIHN0cm9rZS13aWR0aD0iNDAiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSI0MjcwIiB3aWR0aD0iNDYwMCIgaGVpZ2h0PSIxODQwIiByeD0iNDAiIGZpbGw9IiM0NTQ5NGEiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSIzOTkwIiB3aWR0aD0iOTQwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSIxNTIwIiB5PSIzOTkwIiB3aWR0aD0iNjAwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSItMTcyNSIgeT0iMjAwIiB3aWR0aD0iMzQ1MCIgaGVpZ2h0PSI2NSIgcng9IjQwIiBmaWxsPSIjNzZkZmNiIi8+CiAgICA8cmVjdCB4PSItMTQ2MCIgeT0iMzIwMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2I2OWE3ZiIvPjxyZWN0IHg9Ii00NjAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSI1NDAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSItMTQ2MCIgeT0iNDYxMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2RlZDNjMSIvPjxyZWN0IHg9Ii00NjAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz48cmVjdCB4PSI1NDAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz4KICAgIDx0ZXh0IHg9IjAiIHk9IjY5MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMTAiIGZpbGw9IiNmMGYyZWUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIj4xNTDigLM8L3RleHQ+CiAgPC9zdmc+"}</script>
+  <script id="project-data" type="application/json">{"products":{"tower":{"model":"Sonetto V G2","width":308,"height":1088,"depth":415,"referenceHeight":997,"url":"https://www.sonusfaber.com/en/products/sonetto-v/tech-specs","drawing":"https://a.storyblok.com/f/259299/x/e9415e2e28/tech-drawings_sonetto-v.pdf"},"center":{"model":"Sonetto Center G2","width":648,"height":235,"depth":353,"referenceHeight":193,"url":"https://www.sonusfaber.com/en/products/sonetto-center/tech-specs","drawing":"https://a.storyblok.com/f/259299/x/b3bd36b018/tech-drawings_sonetto-center.pdf"},"embedded":{"model":"Palladio PL-563","width":216,"height":471,"depth":100,"cutWidth":192,"cutHeight":448,"protrusion":13,"url":"https://www.sonusfaber.com/en/products/pl-563"},"wall":{"model":"Sonetto Wall G2","width":271,"height":437,"depth":168,"cabinetDepth":128,"bracketPivot":20,"tweeterAboveCenter":108,"wooferBelowCenter":15,"url":"https://www.sonusfaber.com/en/products/sonetto-wall/tech-specs","drawing":"https://a.storyblok.com/f/259299/x/4b46444624/tech-drawings_sonetto-wall.zip"}},"floor":{"left":[1980,940,0],"center":[0,550,0],"right":[-1980,940,0],"frontSub":[1980,1450,210],"frontSubRearAxisDistance":507},"projector":{"model":"Sony P9（VPL-XW8100）","x":570,"lensY":6090,"lensZ":2000,"widthEnvelope":460,"heightEnvelope":210,"depthEnvelope":517,"lensAboveBase":111,"lensProjection":20,"throwRange":[4510,9450],"depthIncludesLens":true},"cabinet":{"extension":0,"cheek":20,"chamfer":0,"sideClearance":300,"backPanel":20,"ceilingInside":2270,"top":2300,"rearClearance":50,"topClearance":150,"sideMiddleHeight":600,"sideLowerHeight":900,"sideUpperHeight":700},"standing":{"height":1700,"rearWalkX":450},"viewer":true,"wallPier":{"xMin":-2480,"xMax":-2120,"yMin":4010,"yMax":4250},"wallMounts":{"SL":{"point":[2480,4130,1610],"wallYaw":90,"adjustment":-11},"SR":{"point":[-2120,4130,1610],"wallYaw":-90,"adjustment":11},"SBL":{"point":[1450,6110,1710],"wallYaw":180,"adjustment":-15},"SBR":{"point":[-1450,6110,1710],"wallYaw":-180,"adjustment":15}},"ktvFront":{"y":110,"z":1710,"trimWidth":460,"trimFrontY":398},"karaokeStation":{"center":[-2890,2000],"nicheOutlineRange":[2,8],"platformHeight":150,"baseWidth":420,"baseDepth":330,"overallHeight":800,"screenWidth":480,"screenShellHeight":285,"screenDepth":30,"screenTiltDegrees":20,"facingClock":6},"project":"中星红庐香颂","version":"v0.2","edition":"v1.4.5","room":{"width":4960,"mainDepth":6110,"nicheDepth":6710,"ceiling":2350,"recessedCeiling":2500,"ceilingRecess":{"front":450,"back":3660,"halfWidth":2130},"originalPlatformHeight":150,"outline":[[2480,0],[-2480,0],[-2480,1250],[-2731,1250],[-3380,1899],[-3380,3360],[-2731,4010],[-2480,4010],[-2480,6110],[20,6110],[20,6710],[2480,6710]],"door":{"x":2480,"yStart":1270,"width":900,"swing":"inward"},"cabinetRight":{"xMin":-2480,"xMax":-2120,"yMin":4250,"yMax":6110},"cabinetRear":{"xMin":20,"xMax":2480,"yMin":6110,"yMax":6710}},"screen":{"model":"PIER K150PHA65","diagonalInch":150,"ratio":[16,9],"outerWidth":3450,"outerHeight":1998,"x":0,"y":200,"outerBottom":315,"openingAllowancePerEdge":20,"originalZone":{"width":3340,"height":1900,"bottom":300}},"seats":{"seatWidth":1000,"seatDepth":950,"eyeOffset":700,"eyeZ":1150,"headZ":1270,"row1":{"xCenter":0,"yFront":3200,"platform":0},"row2":{"xCenter":0,"yFront":4610,"platform":150}},"platform":{"front":4270,"back":6110,"xMin":-2120,"xMax":2480,"height":150,"stepDepth":280,"leftStepWidth":940,"rightStepWidth":600},"speakers":[{"id":"L","type":"lcr","x":1530,"y":125,"z":1130},{"id":"C","type":"lcr","x":0,"y":125,"z":1130},{"id":"R","type":"lcr","x":-1530,"y":125,"z":1130},{"id":"SL","type":"surround","x":2460,"y":4090,"z":1610},{"id":"SR","type":"surround","x":-2460,"y":4160,"z":1610},{"id":"SBL","type":"surround","x":1450,"y":6080,"z":1710},{"id":"SBR","type":"surround","x":-1450,"y":6080,"z":1710},{"id":"TFL","type":"top","x":1150,"y":2600,"z":2500},{"id":"TFR","type":"top","x":-1150,"y":2600,"z":2500},{"id":"TRL","type":"top","x":1150,"y":5650,"z":2350},{"id":"TRR","type":"top","x":-1150,"y":5650,"z":2350},{"id":"SW1","type":"sub","x":1960,"y":760,"z":210},{"id":"SW2","type":"sub","x":-1825,"y":5785,"z":360},{"id":"K-L","type":"ktv","x":2160,"y":330,"z":1710},{"id":"K-R","type":"ktv","x":-2160,"y":330,"z":1710}],"equipment":{"lcr":{"model":"JBL Studio 6 Theater","cutWidth":157,"cutHeight":642,"grilleWidth":188,"grilleHeight":674,"mountDepth":94.5},"surround":{"model":"JBL 6 8IW","cutWidth":221,"cutHeight":318,"mountDepth":94.5},"top":{"model":"JBL 280CSA","cutWidth":260,"cutHeight":260,"mountDepth":139},"sub":{"model":"JBL S660","width":420,"depth":420,"height":420},"ktv":{"model":"JBL KP4012-WH","width":360,"depth":382,"height":600},"control":{"model":"F200 2T","x":-2390,"y":1040},"rack":{"location":"优先与弱电/设备间协调","status":"位置、供电、散热和维修条件待确认"},"extraSubPrewire":[{"x":-1840,"y":695},{"x":1840,"y":5785}]},"approvedDate":"2026-11-06","baselineSha256":"33428a6fb78ace39eb6e25be1b4f9abe232517d62bce66499cd41412bce16700","links":{"sony":"https://helpguide.sony.net/vpl/xw8100/v1/en/contents/TP1001689574.html","jbl":"https://support.jbl.com/on/demandware.static/-/Sites-masterCatalog_Harman/default/dw98cd0d96/pdfs/SpecSheet_JBL_Studio_6_Architectural_rev6_20221208_EN.pdf","denon":"https://www.denon.com/en-us/product/av-receivers/avr-x4800h/300608.html","dolby":"https://www.dolby.com/about/support/guide/speaker-setup-guides/7.1.4-overhead-speaker-setup-guide","rew":"https://www.roomeqwizard.com/help/help_en-GB/html/gettingstarted.html"},"publicEdition":true,"budgetText":"影音设备及安装调试单列。装修和座椅另计，金额与分工以正式报价和合同为准。","fallbackPlan":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9Ii0yODIwIC00MDAgNjU1MCA3NDcwIj4KICAgIDxyZWN0IHg9Ii0yODIwIiB5PSItNDAwIiB3aWR0aD0iNjU1MCIgaGVpZ2h0PSI3NDcwIiBmaWxsPSIjMTQyMzJhIi8+CiAgICA8cG9seWdvbiBwb2ludHM9Ii0yNDgwLDAgMjQ4MCwwIDI0ODAsMTI1MCAyNzMxLDEyNTAgMzM4MCwxODk5IDMzODAsMzM2MCAyNzMxLDQwMTAgMjQ4MCw0MDEwIDI0ODAsNjExMCAtMjAsNjExMCAtMjAsNjcxMCAtMjQ4MCw2NzEwIiBmaWxsPSIjMmEzNzNiIiBzdHJva2U9IiM4ZTllOWUiIHN0cm9rZS13aWR0aD0iNDAiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSI0MjcwIiB3aWR0aD0iNDYwMCIgaGVpZ2h0PSIxODQwIiByeD0iNDAiIGZpbGw9IiM0NTQ5NGEiLz4KICAgIDxyZWN0IHg9Ii0yNDgwIiB5PSIzOTkwIiB3aWR0aD0iOTQwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSIxNTIwIiB5PSIzOTkwIiB3aWR0aD0iNjAwIiBoZWlnaHQ9IjI4MCIgcng9IjQwIiBmaWxsPSIjOGU3OTVlIi8+CiAgICA8cmVjdCB4PSItMTcyNSIgeT0iMjAwIiB3aWR0aD0iMzQ1MCIgaGVpZ2h0PSI2NSIgcng9IjQwIiBmaWxsPSIjNzZkZmNiIi8+CiAgICA8cmVjdCB4PSItMTQ2MCIgeT0iMzIwMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2I2OWE3ZiIvPjxyZWN0IHg9Ii00NjAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSI1NDAiIHk9IjMyMDAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNiNjlhN2YiLz48cmVjdCB4PSItMTQ2MCIgeT0iNDYxMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI5NTAiIHJ4PSI0MCIgZmlsbD0iI2RlZDNjMSIvPjxyZWN0IHg9Ii00NjAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz48cmVjdCB4PSI1NDAiIHk9IjQ2MTAiIHdpZHRoPSI5MjAiIGhlaWdodD0iOTUwIiByeD0iNDAiIGZpbGw9IiNkZWQzYzEiLz4KICAgIDx0ZXh0IHg9IjAiIHk9IjY5MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyMTAiIGZpbGw9IiNmMGYyZWUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIj4xNTDigLM8L3RleHQ+CiAgPC9zdmc+"}</script>
   <script>const T=(()=>{
 /**
  * @license
@@ -54424,6 +54425,8 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
   function speakerLayouts(d, seats) {
     const target=seats.find(seat=>seat.id==='A2').eye;
     const positions={L:d.floor.left,C:d.floor.center,R:d.floor.right};
+    const [leftX,leftY]=positions.L;
+    const leftYaw=Math.atan2(leftX-target[0],target[1]-leftY);
     const floor=d.speakers.map(s=>{
       const mount=d.wallMounts?.[s.id];
       if(mount) {
@@ -54435,6 +54438,9 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       }
       if(d.viewer&&s.type==='ktv') return {...s,y:d.ktvFront.y,z:d.ktvFront.z};
       if(s.id==='SW1') {
+        const rearDistance=d.floor.frontSubRearAxisDistance;
+        if(rearDistance) return {...s,x:leftX+rearDistance*Math.sin(leftYaw),
+          y:leftY-rearDistance*Math.cos(leftYaw),z:d.equipment.sub.height/2};
         const [x,y,z]=d.floor.frontSub;
         return {...s,x,y,z};
       }
@@ -54442,7 +54448,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       if(!position) return s;
       const [x,y,floor]=position;
       const product=s.id==='C'?d.products.center:d.products.tower;
-      const yaw=s.id==='C'?0:Math.atan2(x-target[0],target[1]-y);
+      const yaw=s.id==='C'?0:s.id==='L'?leftYaw:Math.atan2(x-target[0],target[1]-y);
       const tilt=d.viewer&&s.id==='C'?Math.atan2(target[2]-product.referenceHeight,target[1]-y):0;
       return {...s,x,y,z:floor+product.referenceHeight,floor,product,yaw,tilt};
     });
@@ -55275,8 +55281,75 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     let activeSpeakers=layouts.embedded;
     let highlighted=[];
     const panel=d.equipment.control;
-    const control=d.viewer?groupAt([panel.x,panel.y,1040]):mesh([panel.x,panel.y,1040],[57,295,364],deviceMat);
-    if(d.viewer) {
+    const station=d.karaokeStation;
+    const stationOutline=station?outline.slice(...station.nicheOutlineRange):null;
+    const control=station?groupAt([...station.center,station.platformHeight]):
+      d.viewer?groupAt([panel.x,panel.y,1040]):mesh([panel.x,panel.y,1040],[57,295,364],deviceMat);
+    let stationBase, stationDisplay;
+    if(station) {
+      const height=station.platformHeight;
+      shapePlate(stationOutline,height,floorMat).name='点歌区 150 mm 地台';
+      wallSegment(stationOutline.at(-1),stationOutline[0],height,stageMat,0,10);
+      control.name='KTV 落地点歌屏';
+      if(station.facingClock) {
+        // In plan, the screen wall is at 12 o'clock and world +Z points toward 6.
+        control.rotation.y=Math.PI-station.facingClock*Math.PI/6;
+      } else {
+        const [targetX,targetY]=allSeats.find(seat=>seat.id===station.aimSeat).eye;
+        control.rotation.y=Math.atan2(station.center[0]-targetX,targetY-station.center[1]);
+      }
+      const ivory=paint(0xf3efeb,{roughness:.32});
+      const rose=paint(0xb77e72,{metalness:.42,roughness:.34});
+      const trim=paint(0xd7aaa0,{metalness:.32,roughness:.3});
+      stationBase=mesh([0,0,15],[station.baseDepth,station.baseWidth,30],ivory,control,sharedRounded);
+      mesh([0,-15,32],[111,86,8],trim,control,sharedRounded);
+      const tilt=station.screenTiltDegrees*Math.PI/180;
+      const screenCenter=station.overallHeight-
+        (station.screenShellHeight*Math.cos(tilt)+station.screenDepth*Math.sin(tilt))/2;
+      const columnTop=screenCenter-26;
+      mesh([0,-15,(columnTop+32)/2],[83,54,columnTop-32],rose,control,sharedRounded);
+      mesh([-38,9,(columnTop+36)/2],[5,2,columnTop-36],trim,control,sharedRounded);
+      mesh([0,-20,screenCenter-23],[108,55,48],rose,control,sharedRounded);
+      stationDisplay=groupAt([0,8,screenCenter],control);
+      stationDisplay.rotation.x=-tilt;
+      const {screenWidth,screenShellHeight,screenDepth}=station;
+      mesh([0,-2,0],[screenWidth,screenDepth-4,screenShellHeight],trim,stationDisplay,sharedRounded);
+      mesh([0,screenDepth/2-4,0],[screenWidth,8,screenShellHeight],ivory,stationDisplay,sharedRounded);
+      const screenCanvas=document.createElement('canvas');
+      screenCanvas.width=640;
+      screenCanvas.height=360;
+      const ctx=screenCanvas.getContext('2d');
+      const background=ctx.createLinearGradient(0,0,640,360);
+      background.addColorStop(0,'#171436');
+      background.addColorStop(.55,'#25356c');
+      background.addColorStop(1,'#461b52');
+      ctx.fillStyle=background;
+      ctx.fillRect(0,0,640,360);
+      ctx.fillStyle='#dbe5ff';
+      ctx.font='600 19px Microsoft YaHei, sans-serif';
+      ctx.fillText('点歌     排行     已点',28,39);
+      ctx.font='700 39px Microsoft YaHei, sans-serif';
+      ctx.fillText('KTV 点歌',38,138);
+      ctx.font='18px Microsoft YaHei, sans-serif';
+      ctx.fillText('按歌名、歌手或语种选择',39,177);
+      for(const [index,[title,color]] of [['歌星','#2f74c6'],['歌名','#ab397e'],['排行','#6d48ce'],['语种','#157c92']].entries()) {
+        const x=32+index*148;
+        ctx.fillStyle=color;
+        ctx.beginPath();
+        ctx.roundRect(x,231,132,82,12);
+        ctx.fill();
+        ctx.fillStyle='#fff';
+        ctx.font='600 21px Microsoft YaHei, sans-serif';
+        ctx.fillText(title,x+25,280);
+      }
+      const displayTexture=new T.CanvasTexture(screenCanvas);
+      displayTexture.colorSpace=T.SRGBColorSpace;
+      const displayFace=new T.Mesh(new T.PlaneGeometry((screenWidth-26)*mm,(screenShellHeight-25)*mm),
+        new T.MeshBasicMaterial({map:displayTexture,toneMapped:false}));
+      displayFace.position.z=(screenDepth/2+.5)*mm;
+      stationDisplay.add(displayFace);
+      label('落地点歌屏',[...station.center,height+station.overallHeight+70],'control');
+    } else if(d.viewer) {
       control.name='KTV 点歌触控屏';
       control.rotation.y=-Math.PI/2;
       mesh([0,-44,0],[82,88,54],cabinetMat,control);
@@ -55285,6 +55358,12 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       for(const x of [-82,0,82]) for(const z of [-37,37])
         mesh([x,11,z],[70,2,58],glow(0x4c7781),control,sharedRounded);
       label('点歌屏',[panel.x,panel.y,1180],'control');
+    }
+    if(d.floor.frontSubRearAxisDistance) {
+      const left=layouts.floor.find(s=>s.id==='L');
+      const sub=layouts.floor.find(s=>s.id==='SW1');
+      label('背板中线',[sub.x+170,sub.y-140,1120],'front-sub-guide');
+      label('主箱正面朝 A2',[left.x-580,left.y+670,1120],'front-sub-guide');
     }
     scene.add(guide);
 
@@ -55309,6 +55388,9 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       'left-wall':[[1.9,1.56,2.37],[-2.45,1.23,3.41]],
       'right-wall':[[-1.9,1.57,2.84],[2.68,1.20,4.23]],
       'wall-detail':[[.65,1.93,3.29],[2.05,1.62,4.13]],
+      'karaoke-area':[[1.85,1.48,3.82],[2.72,.46,2.17]],
+      'front-sub':[[.18,1.95,2.58],[-1.86,.68,.66]],
+      'front-sub-plan':[[-1.24,5.1,1.31],[-1.24,.05,1.30]],
     };
     const sizeCameras={
       'size-plan':{mode:'room',target:[.41,0,3.15],axis:[0,1,.0001],span:[8.6,8.7]},
@@ -55348,7 +55430,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       const [p,t]=cameraViews[key]||cameraViews.overview;
       const pos=new T.Vector3(...p), target=new T.Vector3(...t);
       const aspect=width&&height?width/height:1.45;
-      const outside=['overview','plan','beam','side'].includes(key);
+      const outside=['overview','plan','beam','side','front-sub-plan'].includes(key);
       if(aspect<1.3&&key!=='decor'&&(!d.viewer||outside))
         pos.sub(target).multiplyScalar(Math.pow(1.3/aspect,.68)*(d.viewer&&key==='overview'?.9:1)).add(target);
       return [pos,target];
@@ -55369,6 +55451,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
     }
     function labelVisible(item) {
       if(d.viewer) {
+        if(item.kind==='front-sub-guide') return viewKey==='front-sub-plan';
         if(!state.labels||viewKey==='eye'||sizeCameras[viewKey]) return false;
         if(item.kind==='seat') return state.chapter==='seats';
         if(item.kind==='projector') return state.chapter==='projection'&&viewKey!=='shadow';
@@ -55458,10 +55541,10 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       const section=key==='size-side';
       roofSolid.visible=d.viewer?state.roof&&!frontOnly&&!section:interior;
       const frontPresentation=['front-compare','shadow'].includes(key);
-      const planView=d.viewer&&key==='plan';
-      doorLeaf.visible=!interior&&!frontOnly&&!section&&!frontPresentation&&!planView;
-      doorClosed.visible=interior||frontPresentation||planView;
-      tallWalls.visible=!['plan','size-plan','size-side'].includes(key);
+      const planView=d.viewer&&['plan','front-sub-plan'].includes(key);
+      doorLeaf.visible=!station&&!interior&&!frontOnly&&!section&&!frontPresentation&&!planView;
+      doorClosed.visible=Boolean(station)||interior||frontPresentation||planView;
+      tallWalls.visible=!planView&&!['size-plan','size-side'].includes(key);
       upperCabinets.visible=d.viewer?!frontOnly&&!section:interior||['rear','cabinet-cut','beam','overview','orbit'].includes(key);
       sideUpper.visible=key!=='beam';
       sideLower.visible=key!=='beam';
@@ -55552,7 +55635,15 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
       headGroup.visible=state.chapter==='seats'&&state.heads&&seat.row===2;
       for(const item of sceneLabels) item.el.classList.toggle('current',highlighted.includes(item.id)||item.id===state.seat);
       clearGuides();
-      if(state.chapter==='channels'&&state.detail) {
+      if(state.view==='front-sub-plan') {
+        const left=activeSpeakers.find(s=>s.id==='L'), sub=activeSpeakers.find(s=>s.id==='SW1');
+        const x=-Math.sin(left.yaw), y=Math.cos(left.yaw);
+        const tip=[left.x+x*700,left.y+y*700,1120];
+        line([[sub.x,sub.y,1120],[left.x,left.y,1120]],0xf1bc78,guide,true);
+        line([[left.x,left.y,1120],tip],0x90efd9,guide);
+        line([[tip[0]-x*120-y*50,tip[1]-y*120+x*50,1120],tip,
+          [tip[0]-x*120+y*50,tip[1]-y*120-x*50,1120]],0x90efd9,guide);
+      } else if(state.chapter==='channels'&&state.detail) {
         const s=activeSpeakers.find(a=>a.id===state.channel);
         line([[s.x,s.y,s.z],seat.eye],0x90efd9,guide,true);
       } else if(state.chapter==='angles') {
@@ -55681,7 +55772,15 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
           parts:activeChannels.get(s.id).anchor.getObjectsByProperty('isMesh',true).length})),
         sideCabinet:{visible:sideUpper.visible&&upperCabinets.visible,openingHeight:sideOpeningHeight},
         rearCabinetClosed:Boolean(lowerCabinets.getObjectByName('投影格下方连续柜面')),
-        centerTilt:activeSpeakers.find(s=>s.id==='C')?.tilt,control:control.name}:{}),
+        centerTilt:activeSpeakers.find(s=>s.id==='C')?.tilt,control:control.name,
+        karaokeStation:station?{...station,outline:stationOutline,world:control.position.toArray(),
+          displayWorldTop:new T.Box3().setFromObject(stationDisplay,true).max.y,
+          baseCorners:[-1,1].flatMap(x=>[-1,1].map(y=>{
+            const corner=stationBase.localToWorld(new T.Vector3(x/2,0,y/2));
+            return [-corner.x/mm,corner.z/mm];
+          })),
+          displayForward:new T.Vector3(0,0,1).transformDirection(stationDisplay.matrixWorld).toArray()}:null,
+        doorOpen:doorLeaf.visible}:{}),
       seats:[...model.seats].map(([id,obj])=>({id,world:obj.anchor.position.toArray()})),
       steps:model.steps.map(s=>({name:s.name,world:s.position.toArray(),height:s.scale.y})),
     });
@@ -55701,6 +55800,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
   const seatName = {A1:'一排左',A2:'一排中',A3:'一排右',B1:'二排左',B2:'二排中',B3:'二排右'};
   const viewName = {
     overview:'鸟瞰', 'front-compare':'前墙', 'left-wall':'左墙','right-wall':'右墙', rear:'后墙', plan:'俯视',
+    'karaoke-area':'点歌区','front-sub':'左主箱与前低音炮','front-sub-plan':'前炮俯视',
     'wall-detail':'右侧环绕','cabinet-cut':'投影柜剖切',beam:'投影光束 · 右侧剖视',shadow:'幕面阴影',
     'size-plan':'房间尺寸','size-side':'地台纵剖','size-front':'幕布尺寸',
   };
@@ -55800,7 +55900,7 @@ return {ACESFilmicToneMapping,AddEquation,AddOperation,AdditiveAnimationBlendMod
         ...(s.mount?[['挂架中心标高',`+${mm(s.mount.point[2])}`],['挂架试摆角',`${Math.abs(s.mount.adjustment)}°`],
           ['产品高 × 宽 × 深',`${product.height} × ${product.width} × ${product.depth} mm`]]:[])]);
     } else {
-      controls=choice('detail-view',[['front-compare','前场'],['wall-detail','右侧挂位'],['rear','后墙']],state.view);
+      controls=choice('detail-view',[['front-compare','前场'],['front-sub','前炮'],['front-sub-plan','前炮俯视'],['wall-detail','右侧挂位'],['rear','后墙']],state.view);
       body=entries([['影院声道','7.2.4'],['前场','Sonetto V G2 / Center G2'],['侧环绕／后环绕','Sonetto Wall G2 ×4'],
         ['卡拉 OK','JBL KP4012-WH ×2'],['两排座位','3+3']]);
     }
